@@ -156,6 +156,8 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 .pl-hdr-right { display:flex; gap:0.7rem; align-items:center; }
 .pl-add-btn { background:var(--gold-soft); border:1px solid rgba(212,149,106,0.3); color:var(--gold); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
 .pl-add-btn:hover { background:rgba(212,149,106,0.2); }
+.pl-clear-btn { background:rgba(201,107,122,0.12); border:1px solid rgba(201,107,122,0.25); color:var(--rose); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
+.pl-clear-btn:hover { background:rgba(201,107,122,0.25); }
 .close-pl { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
 #pl-list { padding:0.5rem 0; }
 .pl-item { display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; cursor:pointer; transition:background 0.15s; }
@@ -238,7 +240,33 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 #toast { position:fixed; bottom:1.8rem; left:50%; transform:translateX(-50%) translateY(14px); background:rgba(20,20,40,0.95); border:1px solid var(--border); color:var(--text); padding:0.6rem 1.1rem; border-radius:8px; font-size:0.82rem; opacity:0; transition:opacity 0.3s,transform 0.3s; z-index:300; backdrop-filter:blur(8px); pointer-events:none; white-space:nowrap; }
 #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 
-#file-input-el, #pl-file-input { display:none; }
+/* GUEST MOVIE REQUEST */
+#guest-req-btn {
+  display:none; font-size:0.72rem; color:var(--gold);
+  background:rgba(212,149,106,0.15); padding:0.3rem 0.75rem;
+  border-radius:20px; cursor:pointer; border:1px solid rgba(212,149,106,0.35);
+  backdrop-filter:blur(6px); transition:background 0.2s;
+}
+#guest-req-btn:hover { background:rgba(212,149,106,0.28); }
+#guest-req-btn:disabled { opacity:0.5; cursor:default; }
+
+/* Host approval popup */
+#approve-popup {
+  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
+  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
+  border-radius:14px; padding:1rem 1.2rem; z-index:400;
+  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
+  backdrop-filter:blur(12px); text-align:center; min-width:240px;
+}
+#approve-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
+.app-title { font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:0.4rem; }
+.app-msg { font-size:0.88rem; margin-bottom:0.8rem; }
+.app-btns { display:flex; gap:0.5rem; justify-content:center; }
+.app-yes { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+.app-no  { background:rgba(201,107,122,0.2); color:var(--rose); border:1px solid rgba(201,107,122,0.3); border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; cursor:pointer; }
+
+/* Guest file input (hidden, triggered by button) */
+#guest-file-input { display:none; }
 
 /* ANIMATIONS */
 @keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
@@ -309,6 +337,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
           <div class="u-pill"><div class="dot" id="dot-g"></div><span id="nm-g">Waiting...</span></div>
         </div>
         <button id="remove-file-btn" onclick="removeFile()" title="Remove video & upload new">✕ Remove file</button>
+        <button id="guest-req-btn" onclick="guestRequestMovie()" title="Request to pick a movie">🎬 Request Movie</button>
         <button class="room-code-btn" id="code-disp" onclick="copyInvite()">📎 ------</button>
       </div>
     </div>
@@ -375,6 +404,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
         <h3>Playlist</h3>
         <div class="pl-hdr-right">
           <button class="pl-add-btn" onclick="document.getElementById('pl-file-input').click()">+ Add files</button>
+          <button class="pl-clear-btn" onclick="clearPlaylist()">Clear all</button>
           <button class="close-pl" onclick="togglePlaylist()">✕</button>
         </div>
       </div>
@@ -414,6 +444,19 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 
 <!-- Toast -->
 <div id="toast"></div>
+
+<!-- Host approval popup for guest movie request -->
+<div id="approve-popup">
+  <div class="app-title">Movie Request</div>
+  <div class="app-msg" id="approve-msg">Your partner wants to pick a movie</div>
+  <div class="app-btns">
+    <button class="app-yes" onclick="approveGuestRequest(true)">Allow ✓</button>
+    <button class="app-no"  onclick="approveGuestRequest(false)">Deny ✕</button>
+  </div>
+</div>
+
+<!-- Guest file input (revealed after host approval) -->
+<input type="file" id="guest-file-input" accept="video/*,.mkv,.avi,.mov,.mp4,.webm,.m4v,.flv,.wmv,.3gp">
 
 <!-- Firebase v9 compat -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -462,6 +505,11 @@ let playlist=[], currentIdx=-1;
 let localBrightness=1.0;
 let heartbeatInt=null;
 let reconnecting=false;
+// RTC session guards — prevent duplicate peer connections from listener re-fires
+let guestRTCStarted=false;
+let hostWatchStarted=false;
+// Track Firebase listeners so we can detach stale ones before new RTC sessions
+let fbListeners={}; // key → {ref, event}
 
 const vid     = document.getElementById('vid');
 const fileEl  = document.getElementById('file-input-el');
@@ -552,7 +600,6 @@ function enterRoom(){
   watchControl();
   startHeartbeat();
 }
-
 // ── HEARTBEAT (keeps Firebase connection alive, prevents 1-min drop) ──
 function startHeartbeat(){
   heartbeatInt=setInterval(()=>{
@@ -575,9 +622,16 @@ async function attemptReconnect(){
   try{
     if(pc){ pc.close(); pc=null; }
     await new Promise(r=>setTimeout(r,2000));
-    if(role==='host' && localStream) await doHostRTC();
-    else if(role==='guest') await doGuestRTC();
-  }catch(e){toast('Could not reconnect. Please refresh.');}
+    if(role==='host'){
+      // Re-capture from the currently loaded video element
+      const capture=vid.captureStream||vid.mozCaptureStream;
+      if(capture && vid.readyState>=2) await doHostRTC();
+      else toast('Could not reconnect — video not ready.');
+    } else if(role==='guest'){
+      guestRTCStarted=false; // allow doGuestRTC to run again
+      await doGuestRTC();
+    }
+  }catch(e){ toast('Could not reconnect. Please refresh.'); }
   reconnecting=false;
 }
 
@@ -612,22 +666,26 @@ function setupHostFlow(){
     plFileEl.value='';
     if(currentIdx===-1&&playlist.length>0) playIdx(0, true);
   });
+
+  // Host watches for guest movie requests and guest-initiated streams
+  watchGuestMovieRequest();
+  watchGuestStream();
 }
 
-async function loadVideoFile(file, isFirst=false){
+async function loadVideoFile(file, needsRTC=false){
   document.getElementById('upload-ov').style.display='none';
   document.getElementById('remove-file-btn').style.display='flex';
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Loading video…';
 
-  // Release old object URL
+  // Release previous
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
   if(vid.srcObject){ vid.srcObject=null; }
+  vid.onerror=null;
 
   const url=URL.createObjectURL(file);
   vid.src=url; vid.muted=true;
 
-  // Handle unsupported format
   vid.onerror=()=>{
     document.getElementById('wait-ov').classList.remove('show');
     document.getElementById('upload-ov').style.display='flex';
@@ -635,22 +693,47 @@ async function loadVideoFile(file, isFirst=false){
     toast('⚠️ Browser can\'t play this format. Try MP4 or WebM.');
   };
 
-  // Use 'loadeddata' + try play — more reliable than 'canplay' for large files
-  const onReady=async()=>{
-    document.getElementById('wait-ov').classList.remove('show');
-    bindVideoUI();
-    if(isFirst || !pc){
-      await roomRef.child('videoReady').set(true);
-      if(pc){ pc.close(); pc=null; }
-      await doHostRTC();
-    }
-    // Increase WebRTC bitrate after tracks added
-    setTimeout(boostBitrate, 1500);
-  };
+  // Wrap onReady in a promise so we can await it and handle timeouts
+  await new Promise((resolve)=>{
+    // Timeout fallback — if loadeddata never fires in 30s, bail out
+    const timeout=setTimeout(()=>{
+      document.getElementById('wait-ov').classList.remove('show');
+      toast('⚠️ Video took too long to load. Try a smaller file or MP4 format.');
+      resolve();
+    }, 30000);
 
-  vid.addEventListener('loadeddata', onReady, {once:true});
-  vid.load();
-  try{ await vid.play(); } catch(_){}
+    vid.addEventListener('loadeddata', async ()=>{
+      clearTimeout(timeout);
+      document.getElementById('wait-ov').classList.remove('show');
+      // Start playback first so captureStream gets live frames
+      try{ await vid.play(); }catch(_){}
+      bindVideoUI();
+      if(needsRTC){
+        await roomRef.child('videoReady').set(true);
+        if(pc){ pc.close(); pc=null; }
+        await doHostRTC();
+        setTimeout(boostBitrate, 1500);
+      } else if(pc){
+        // Live RTC session — swap stream tracks in-place
+        try{
+          const capture=vid.captureStream||vid.mozCaptureStream;
+          if(capture){
+            const newStream=capture.call(vid);
+            const senders=pc.getSenders();
+            newStream.getTracks().forEach(newTrack=>{
+              const sender=senders.find(s=>s.track&&s.track.kind===newTrack.kind);
+              if(sender) sender.replaceTrack(newTrack).catch(()=>{});
+            });
+            localStream=newStream;
+            setTimeout(boostBitrate,1500);
+          }
+        } catch(err){ toast('Track swap error: '+err.message); }
+      }
+      resolve();
+    }, {once:true});
+
+    vid.load();
+  });
 }
 
 function boostBitrate(){
@@ -665,24 +748,46 @@ function boostBitrate(){
   });
 }
 
-// ── REMOVE FILE ──────────────────────────────────────────────
+// ── REMOVE FILE (stop current video, keep playlist intact) ──
 function removeFile(){
-  if(!confirm('Remove the current video and upload a new one?'))return;
+  if(!confirm('Stop current video and return to upload screen?'))return;
   vid.pause();
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
-  vid.src=''; vid.srcObject=null;
-  playlist=[]; currentIdx=-1;
+  vid.src=''; vid.srcObject=null; vid.removeAttribute('src');
+  currentIdx=-1;
   renderPlaylist();
   document.getElementById('upload-ov').style.display='flex';
   document.getElementById('remove-file-btn').style.display='none';
   document.getElementById('prog-fill').style.width='0%';
+  document.getElementById('prog-thumb').style.left='0%';
   document.getElementById('time-txt').textContent='0:00 / 0:00';
   document.getElementById('pp-btn').textContent='▶';
+  _detachRTCListeners();
   if(pc){ pc.close(); pc=null; }
+  // Reset session guards so next video can start a fresh RTC session
+  guestRTCStarted=false; hostWatchStarted=false;
   if(roomRef) roomRef.child('videoReady').set(false);
 }
 
+// ── CLEAR ENTIRE PLAYLIST ────────────────────────────────────
+function clearPlaylist(){
+  if(!playlist.length) return;
+  if(!confirm('Clear entire playlist?')) return;
+  playlist.forEach(item=>{ try{ URL.revokeObjectURL(item.url); }catch(_){} });
+  playlist=[]; currentIdx=-1;
+  renderPlaylist();
+}
+
 async function doHostRTC(){
+  // Detach any stale RTC-related Firebase listeners from previous session
+  _detachRTCListeners();
+  // Clear stale ICE candidates and answer from Firebase so guest doesn't get old data
+  await Promise.all([
+    roomRef.child('cands/host').remove().catch(()=>{}),
+    roomRef.child('cands/guest').remove().catch(()=>{}),
+    roomRef.child('answer').remove().catch(()=>{}),
+  ]);
+
   pc=new RTCPeerConnection(ICE);
   setupPCEvents();
 
@@ -692,26 +797,52 @@ async function doHostRTC(){
   const doCapture=async()=>{
     try{
       localStream=capture.call(vid);
-      if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid); }
+      // Wait for tracks if captureStream returned empty (can happen on first frame)
+      if(!localStream.getTracks().length){
+        await new Promise(r=>setTimeout(r,500));
+        localStream=capture.call(vid);
+      }
+      if(!localStream.getTracks().length){ toast('No video tracks found — try playing the video first.'); return; }
       localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
       const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
       await pc.setLocalDescription(offer);
       await roomRef.child('offer').set({sdp:offer.sdp,type:offer.type});
-      roomRef.child('answer').on('value',async s=>{
+
+      // Answer listener — attach once, store ref for cleanup
+      const answerRef=roomRef.child('answer');
+      const answerHandler=async s=>{
         const a=s.val();
-        if(a&&!pc.currentRemoteDescription) await pc.setRemoteDescription(new RTCSessionDescription(a));
-      });
-      roomRef.child('cands/guest').on('child_added',async s=>{
-        const c=s.val(); if(c)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(e){}
-      });
+        if(a&&pc&&!pc.currentRemoteDescription){
+          try{ await pc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+        }
+      };
+      answerRef.on('value', answerHandler);
+      fbListeners['answer']={ref:answerRef, event:'value', handler:answerHandler};
+
+      // Guest ICE candidates
+      const guestCandsRef=roomRef.child('cands/guest');
+      const guestCandsHandler=async s=>{
+        const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+      };
+      guestCandsRef.on('child_added', guestCandsHandler);
+      fbListeners['cands_guest']={ref:guestCandsRef, event:'child_added', handler:guestCandsHandler};
+
     }catch(err){ toast('Stream error: '+err.message); }
   };
 
   pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/host').push(e.candidate.toJSON()); };
 
-  // Capture only after video is playing (fixes blank screen)
+  // Capture only after video is playing (fixes blank stream)
   if(!vid.paused && vid.readyState>=2){ await doCapture(); }
   else { vid.addEventListener('playing', doCapture,{once:true}); try{await vid.play();}catch(_){} }
+}
+
+// Detach stored Firebase RTC listeners
+function _detachRTCListeners(){
+  Object.values(fbListeners).forEach(({ref,event,handler})=>{
+    try{ ref.off(event, handler); }catch(_){}
+  });
+  fbListeners={};
 }
 
 // ── GUEST FLOW ───────────────────────────────────────────────
@@ -720,11 +851,18 @@ function setupGuestFlow(){
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Waiting for host to select a movie…';
   roomRef.child('videoReady').on('value',async s=>{
-    if(s.val()){ document.getElementById('wait-ov').classList.remove('show'); await doGuestRTC(); }
+    if(!s.val()) return;
+    if(guestRTCStarted) return; // prevent duplicate RTC from re-fires
+    guestRTCStarted=true;
+    document.getElementById('wait-ov').classList.remove('show');
+    await doGuestRTC();
   });
+  // Guest can request to pick a movie
+  setupGuestMovieRequest();
 }
 
 async function doGuestRTC(){
+  _detachRTCListeners();
   if(pc){ pc.close(); pc=null; }
   pc=new RTCPeerConnection(ICE);
   setupPCEvents();
@@ -738,15 +876,38 @@ async function doGuestRTC(){
   };
   pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guest').push(e.candidate.toJSON()); };
 
-  const snap=await roomRef.child('offer').once('value');
-  const offer=snap.val(); if(!offer)return;
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer=await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  await roomRef.child('answer').set({sdp:answer.sdp,type:answer.type});
-  roomRef.child('cands/host').on('child_added',async s=>{
-    const c=s.val(); if(c)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(e){}
-  });
+  // Retry offer fetch — host may not have written it yet
+  let offer=null;
+  for(let attempt=0; attempt<8; attempt++){
+    const snap=await roomRef.child('offer').once('value');
+    offer=snap.val();
+    if(offer) break;
+    await new Promise(r=>setTimeout(r,1000)); // wait 1s and retry
+  }
+  if(!offer){
+    toast('Could not connect — no offer from host. Please refresh.');
+    guestRTCStarted=false; // allow retry
+    return;
+  }
+
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await roomRef.child('answer').set({sdp:answer.sdp,type:answer.type});
+
+    // Host ICE candidates — clear guest's old cands first, then listen
+    await roomRef.child('cands/guest').remove().catch(()=>{});
+    const hostCandsRef=roomRef.child('cands/host');
+    const hostCandsHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    hostCandsRef.on('child_added', hostCandsHandler);
+    fbListeners['cands_host']={ref:hostCandsRef, event:'child_added', handler:hostCandsHandler};
+  }catch(err){
+    toast('Connection error: '+err.message);
+    guestRTCStarted=false;
+  }
 }
 
 function setupPCEvents(){
@@ -789,16 +950,44 @@ function renderPlaylist(){
 }
 function removeFromPlaylist(i,e){
   e.stopPropagation();
-  URL.revokeObjectURL(playlist[i].url);
+  const wasPlaying = (i === currentIdx);
+  const itemUrl = playlist[i].url;
   playlist.splice(i,1);
-  if(currentIdx>=i) currentIdx=Math.max(-1,currentIdx-1);
+
+  if(wasPlaying){
+    // Pause and clear video — revoke via itemUrl only (same as vid.src)
+    vid.pause();
+    vid.src=''; vid.srcObject=null; vid.removeAttribute('src');
+    try{ URL.revokeObjectURL(itemUrl); }catch(_){}
+    currentIdx=-1;
+    document.getElementById('prog-fill').style.width='0%';
+    document.getElementById('prog-thumb').style.left='0%';
+    document.getElementById('time-txt').textContent='0:00 / 0:00';
+    document.getElementById('pp-btn').textContent='▶';
+    if(playlist.length===0){
+      document.getElementById('upload-ov').style.display='flex';
+      document.getElementById('remove-file-btn').style.display='none';
+      if(pc){ pc.close(); pc=null; }
+      if(roomRef) roomRef.child('videoReady').set(false);
+    } else {
+      const nextIdx = Math.min(i, playlist.length-1);
+      playIdx(nextIdx, true);
+    }
+  } else {
+    // Just revoke URL, adjust index
+    try{ URL.revokeObjectURL(itemUrl); }catch(_){}
+    if(i < currentIdx) currentIdx--;
+  }
   renderPlaylist();
 }
 async function playIdx(i, isHost=false){
   if(i<0||i>=playlist.length)return;
   currentIdx=i;
   renderPlaylist();
-  if(isHost&&role==='host') await loadVideoFile(playlist[i].file, currentIdx===0);
+  if(isHost&&role==='host'){
+    const isFirstEver = !pc || pc.connectionState==='closed' || pc.connectionState==='failed';
+    await loadVideoFile(playlist[i].file, isFirstEver);
+  }
 }
 function nextTrack(){ if(role==='host'&&playlist.length) playIdx((currentIdx+1)%playlist.length,true); }
 function prevTrack(){ if(role==='host'&&playlist.length) playIdx((currentIdx-1+playlist.length)%playlist.length,true); }
@@ -809,15 +998,43 @@ function togglePlaylist(){
 
 // ── VIDEO UI ────────────────────────────────────────────────
 function bindVideoUI(){
-  vid.removeEventListener('timeupdate',updateProg);
-  vid.addEventListener('timeupdate',updateProg);
-  vid.addEventListener('play',()=>setPPBtn(true));
-  vid.addEventListener('pause',()=>setPPBtn(false));
-  vid.addEventListener('ended',()=>{ if(role==='host') nextTrack(); });
-  document.getElementById('pp-btn').textContent=vid.paused?'▶':'⏸';
+  vid.removeEventListener('timeupdate', updateProg);
+  vid.addEventListener('timeupdate', updateProg);
+
+  // Use .onplay/.onpause style to avoid stacking multiple listeners across bindVideoUI calls
+  vid.onplay  = ()=>setPPBtn(true);
+  vid.onpause = ()=>setPPBtn(false);
+  vid.onended = ()=>{ if(role==='host') nextTrack(); };
+
+  // Show buffering spinner when seeking/stalled (host local video only)
+  vid.onseeking = ()=>{
+    if(role==='host') document.getElementById('wait-ov').classList.add('show');
+  };
+  vid.onseeked = ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    // After seek settles, ensure play continues and captureStream isn't stalled
+    if(role==='host' && !vid.paused){
+      // Small delay lets the decoder catch up before WebRTC tries to re-capture
+      setTimeout(()=>{ vid.play().catch(()=>{}); }, 120);
+    }
+  };
+  vid.onwaiting = ()=>{
+    if(role==='host') document.getElementById('wait-ov').classList.add('show');
+  };
+  vid.oncanplay = ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+  };
+
+  document.getElementById('pp-btn').textContent = vid.paused ? '▶' : '⏸';
+
+  // Progress bar: only allow seeking if this is a seekable local video (host)
+  const progWrap = document.getElementById('prog-wrap');
+  progWrap.style.cursor = (role==='host') ? 'pointer' : 'default';
+  progWrap.style.pointerEvents = (role==='host') ? 'auto' : 'none';
 }
+
 function updateProg(){
-  if(!vid.duration)return;
+  if(!vid.duration || !isFinite(vid.duration)) return;
   const p=(vid.currentTime/vid.duration)*100;
   document.getElementById('prog-fill').style.width=p+'%';
   document.getElementById('prog-thumb').style.left=p+'%';
@@ -826,26 +1043,57 @@ function updateProg(){
 function setPPBtn(pl){ document.getElementById('pp-btn').textContent=pl?'⏸':'▶'; }
 
 document.getElementById('prog-wrap').addEventListener('click',e=>{
+  // Guard: only host with a real seekable video can use this
+  if(role!=='host') return;
+  if(!vid.duration || !isFinite(vid.duration)) return;
   const r=e.currentTarget.getBoundingClientRect();
-  vid.currentTime=((e.clientX-r.left)/r.width)*vid.duration;
-  sendCtrl('seek');
+  const seekTo=((e.clientX-r.left)/r.width)*vid.duration;
+  doSeek(seekTo);
 });
+
+// Central seek function — sends ctrl AFTER seeked fires so time is accurate
+function doSeek(time){
+  if(role!=='host') return;
+  const wasPlaying = !vid.paused;
+  const clampedTime = Math.max(0, Math.min(time, vid.duration||0));
+  vid.currentTime = clampedTime;
+  // Send the accurate time only after browser confirms the seek landed
+  vid.addEventListener('seeked', function onSeeked(){
+    vid.removeEventListener('seeked', onSeeked);
+    document.getElementById('wait-ov').classList.remove('show');
+    sendCtrl('seek'); // now vid.currentTime is the real landed position
+    if(wasPlaying){
+      setTimeout(()=>{ vid.play().catch(()=>{}); }, 100);
+    }
+  }, {once:true});
+}
 
 // ── PLAYBACK CONTROL SYNC ───────────────────────────────────
 let syncing=false;
 function watchControl(){
   roomRef.child('ctrl').on('value',s=>{
-    const d=s.val(); if(!d||d.by===role)return;
+    const d=s.val(); if(!d||d.by===role) return;
     syncing=true;
-    if(d.action==='play'){ vid.currentTime=d.time+(Date.now()-d.ts)/1000; vid.play(); }
-    else if(d.action==='pause'){ vid.pause(); vid.currentTime=d.time; }
-    else if(d.action==='seek'){ vid.currentTime=d.time; }
+    if(d.action==='play'){
+      // Guest: srcObject stream can't seek — just play
+      if(vid.srcObject){ vid.play().catch(()=>{}); }
+      else { vid.currentTime=d.time+(Date.now()-d.ts)/1000; vid.play(); }
+    } else if(d.action==='pause'){
+      vid.pause();
+      if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+    } else if(d.action==='seek'){
+      // Guest stream can't seek — nothing to do; host already moved
+      if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+    }
     setTimeout(()=>syncing=false,400);
   });
 }
 function sendCtrl(action){ if(!roomRef)return; roomRef.child('ctrl').set({action,time:vid.currentTime,ts:Date.now(),by:role}); }
 function togglePlay(){ if(vid.paused){vid.play();sendCtrl('play');}else{vid.pause();sendCtrl('pause');} }
-function skip(s){ vid.currentTime=Math.max(0,vid.currentTime+s); sendCtrl('seek'); }
+function skip(s){
+  if(role!=='host') return; // guest can't seek a stream
+  doSeek(vid.currentTime + s);
+}
 function toggleMute(){ vid.muted=!vid.muted; document.getElementById('mute-btn').textContent=vid.muted?'🔇':'🔊'; }
 function goFullscreen(){
   if(!document.fullscreenElement) document.getElementById('video-area').requestFullscreen().catch(()=>{});
@@ -961,7 +1209,229 @@ function stopRec(e){
   mediaRec.stop(); isRec=false;
 }
 
-// ── CHAT TOGGLE ──────────────────────────────────────────────
+// ── GUEST MOVIE REQUEST ──────────────────────────────────────
+let guestCanPickMovie = false;
+
+function setupGuestMovieRequest(){
+  // Show the request button for guest
+  document.getElementById('guest-req-btn').style.display='flex';
+
+  // Listen for host approval/denial
+  roomRef.child('movieRequest').on('value', s=>{
+    const d=s.val();
+    if(!d) return;
+    if(d.status==='approved' && !guestCanPickMovie){
+      guestCanPickMovie=true;
+      toast('Host approved! Pick your movie 🎬', 3500);
+      // Trigger file picker
+      document.getElementById('guest-file-input').click();
+      document.getElementById('guest-req-btn').textContent='🎬 Pick Movie';
+      document.getElementById('guest-req-btn').disabled=false;
+    } else if(d.status==='denied'){
+      toast('Request denied by host 😅');
+      document.getElementById('guest-req-btn').disabled=false;
+      document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
+      guestCanPickMovie=false;
+      // Clear the request node
+      roomRef.child('movieRequest').remove();
+    }
+  });
+
+  // Wire guest file input
+  document.getElementById('guest-file-input').addEventListener('change', async e=>{
+    const file=e.target.files[0]; if(!file)return;
+    document.getElementById('guest-file-input').value='';
+    // Reset button
+    document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
+    guestCanPickMovie=false;
+    // Clear request node
+    roomRef.child('movieRequest').remove();
+    // Guest loads the video locally and sends stream to host via new RTC
+    await guestLoadAndStream(file);
+  });
+}
+
+function guestRequestMovie(){
+  if(guestCanPickMovie){
+    // Already approved — just trigger picker again
+    document.getElementById('guest-file-input').click();
+    return;
+  }
+  const btn=document.getElementById('guest-req-btn');
+  btn.disabled=true;
+  btn.textContent='⏳ Waiting…';
+  roomRef.child('movieRequest').set({status:'pending', from: myName, ts: Date.now()});
+  toast('Request sent to host…');
+}
+
+// Host: watch for guest movie requests
+function watchGuestMovieRequest(){
+  roomRef.child('movieRequest').on('value', s=>{
+    const d=s.val();
+    // Only show popup for a genuinely new pending request (not already handled)
+    if(!d || d.status !== 'pending') {
+      // Hide popup if request was cleared/handled
+      document.getElementById('approve-popup').classList.remove('show');
+      return;
+    }
+    document.getElementById('approve-msg').textContent=`${d.from} wants to pick the next movie`;
+    document.getElementById('approve-popup').classList.add('show');
+  });
+}
+
+function approveGuestRequest(allow){
+  document.getElementById('approve-popup').classList.remove('show');
+  if(allow){
+    roomRef.child('movieRequest').update({status:'approved'});
+    toast(`You approved ${document.getElementById('approve-msg').textContent.split(' ')[0]}'s request`);
+  } else {
+    roomRef.child('movieRequest').update({status:'denied'});
+  }
+}
+
+// Guest loads a local file and streams it to host (reverse of normal flow)
+async function guestLoadAndStream(file){
+  document.getElementById('wait-ov').classList.remove('show');
+  document.getElementById('wait-msg').textContent='Loading your movie…';
+
+  // Show a mini loading indicator
+  document.getElementById('wait-ov').classList.add('show');
+
+  if(vid.srcObject){ vid.srcObject=null; }
+  if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+
+  const url=URL.createObjectURL(file);
+  vid.src=url; vid.muted=true;
+
+  vid.onerror=()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    toast('⚠️ Browser can\'t play this format. Try MP4 or WebM.');
+  };
+
+  vid.addEventListener('loadeddata', async ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    bindVideoUI();
+    // Signal host that guest has a video ready
+    await roomRef.child('guestVideo').set({ready:true, ts:Date.now()});
+    // Guest now acts as streamer — set up RTC offer from guest side
+    await doGuestStreamRTC();
+  }, {once:true});
+
+  vid.load();
+  try{ await vid.play(); }catch(_){}
+}
+
+// Guest streams to host (guest as sender)
+async function doGuestStreamRTC(){
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  const capture=vid.captureStream||vid.mozCaptureStream;
+  if(!capture){ toast('Streaming requires Chrome or Edge.'); return; }
+
+  // Clear old cands + answers so host gets a clean session
+  await Promise.all([
+    roomRef.child('cands/guestStream').remove().catch(()=>{}),
+    roomRef.child('cands/hostWatch').remove().catch(()=>{}),
+    roomRef.child('guestAnswer').remove().catch(()=>{}),
+  ]);
+  // Reset host watch guard so host can receive the new stream
+  hostWatchStarted=false;
+
+  try{
+    localStream=capture.call(vid);
+    if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid); }
+    if(!localStream.getTracks().length){ toast('No video tracks found.'); return; }
+    localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
+
+    const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
+    await pc.setLocalDescription(offer);
+    await roomRef.child('guestOffer').set({sdp:offer.sdp,type:offer.type});
+
+    // guestAnswer listener
+    const guestAnswerRef=roomRef.child('guestAnswer');
+    const guestAnswerHandler=async s=>{
+      const a=s.val();
+      if(a&&pc&&!pc.currentRemoteDescription){
+        try{ await pc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+      }
+    };
+    guestAnswerRef.on('value', guestAnswerHandler);
+    fbListeners['guestAnswer']={ref:guestAnswerRef, event:'value', handler:guestAnswerHandler};
+
+    // guestStream ICE candidates from host
+    const guestStreamRef=roomRef.child('cands/guestStream');
+    const guestStreamHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    guestStreamRef.on('child_added', guestStreamHandler);
+    fbListeners['cands_guestStream']={ref:guestStreamRef, event:'child_added', handler:guestStreamHandler};
+
+    pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/hostWatch').push(e.candidate.toJSON()); };
+    setTimeout(boostBitrate,1500);
+  }catch(err){ toast('Stream error: '+err.message); }
+}
+
+// Host: watch for guest-initiated stream
+function watchGuestStream(){
+  roomRef.child('guestVideo').on('value', async s=>{
+    if(!s.val()?.ready) return;
+    if(hostWatchStarted) return; // prevent duplicate connections
+    hostWatchStarted=true;
+    toast('Partner is streaming their movie! 🎬');
+    await doHostWatchGuestRTC();
+  });
+}
+
+async function doHostWatchGuestRTC(){
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  pc.ontrack=e=>{
+    if(vid.srcObject===e.streams[0])return;
+    if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+    vid.src=''; vid.removeAttribute('src');
+    vid.srcObject=e.streams[0];
+    vid.muted=false;
+    vid.play().catch(()=>{ toast('Tap to play'); });
+    bindVideoUI();
+    document.getElementById('remove-file-btn').style.display='none';
+  };
+
+  pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guestStream').push(e.candidate.toJSON()); };
+
+  // Clear old cands before new session
+  await roomRef.child('cands/guestStream').remove().catch(()=>{});
+  await roomRef.child('cands/hostWatch').remove().catch(()=>{});
+
+  // Retry offer fetch
+  let offer=null;
+  for(let attempt=0; attempt<8; attempt++){
+    const snap=await roomRef.child('guestOffer').once('value');
+    offer=snap.val();
+    if(offer) break;
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  if(!offer){ toast('Guest stream offer not found.'); hostWatchStarted=false; return; }
+
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await roomRef.child('guestAnswer').set({sdp:answer.sdp,type:answer.type});
+
+    const hostWatchRef=roomRef.child('cands/hostWatch');
+    const hostWatchHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    hostWatchRef.on('child_added', hostWatchHandler);
+    fbListeners['cands_hostWatch']={ref:hostWatchRef, event:'child_added', handler:hostWatchHandler};
+  }catch(err){ toast('Host watch error: '+err.message); hostWatchStarted=false; }
+}
 function toggleChat(){
   chatOpen=!chatOpen;
   document.getElementById('chat-panel').classList.toggle('open',chatOpen);
@@ -1063,8 +1533,28 @@ va.addEventListener('touchend',e=>{
 
 // ── CONTROLS AUTO-HIDE ───────────────────────────────────────
 let hideTimer;
-va.addEventListener('mousemove',()=>{ va.classList.add('ctrls'); clearTimeout(hideTimer); hideTimer=setTimeout(()=>va.classList.remove('ctrls'),3000); });
-va.addEventListener('touchstart',()=>{ va.classList.toggle('ctrls'); },{passive:true});
+function showCtrls(){
+  va.classList.add('ctrls');
+  clearTimeout(hideTimer);
+  hideTimer=setTimeout(()=>va.classList.remove('ctrls'),5000);
+}
+va.addEventListener('mousemove', showCtrls);
+// Touch: single tap on video area (not on a button) shows controls and auto-hides
+va.addEventListener('touchstart',e=>{
+  // Only trigger if the touch is directly on the video area or vid element (not on buttons/controls)
+  if(e.target===va||e.target===vid){
+    if(va.classList.contains('ctrls')){
+      va.classList.remove('ctrls');
+      clearTimeout(hideTimer);
+    } else {
+      showCtrls();
+    }
+  } else {
+    // Touching a control button — reset the hide timer
+    clearTimeout(hideTimer);
+    hideTimer=setTimeout(()=>va.classList.remove('ctrls'),5000);
+  }
+},{passive:true});
 
 // ── INVITE ─────────────────────────────────────────────────
 // Already defined above
