@@ -77,9 +77,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
   padding:1rem 1.2rem;
   background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);
   display:flex; align-items:center; justify-content:space-between;
-  opacity:0; transition:opacity 0.4s; pointer-events:none;
+  opacity:0; transition:opacity 0.3s;
 }
-#video-area.ctrls-visible #room-bar { opacity:1; pointer-events:all; }
+#video-area:hover #room-bar, #video-area.ctrls #room-bar { opacity:1; }
 .room-brand { font-family:'Playfair Display',serif; font-size:1rem; }
 .room-brand em { font-style:italic; font-weight:700; color:var(--gold); }
 .room-right { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; justify-content:flex-end; }
@@ -99,9 +99,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
   padding:2rem 1.2rem 1.2rem;
   background:linear-gradient(to top,rgba(0,0,0,0.85) 0%,transparent 100%);
   display:flex; flex-direction:column; gap:0.75rem;
-  opacity:0; transition:opacity 0.4s; pointer-events:none;
+  opacity:0; transition:opacity 0.3s; pointer-events:none;
 }
-#video-area.ctrls-visible #vid-controls { opacity:1; pointer-events:all; }
+#video-area:hover #vid-controls, #video-area.ctrls #vid-controls { opacity:1; pointer-events:all; }
 .prog-wrap { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; cursor:pointer; }
 .prog-fill { height:100%; background:var(--gold); border-radius:2px; pointer-events:none; width:0%; transition:width 0.1s linear; }
 .prog-thumb { position:absolute; top:50%; left:0%; transform:translate(-50%,-50%); width:13px; height:13px; border-radius:50%; background:var(--gold); pointer-events:none; opacity:0; transition:opacity 0.2s; }
@@ -270,29 +270,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 #pl-file-input    { display:none; }
 #file-input-el    { display:none; }
 
-/* ── CTRL TOGGLE BUTTON ── */
-#ctrl-toggle {
-  position:absolute;
-  bottom:1.4rem;
-  right:1.2rem;
-  z-index:30;
-  width:42px;
-  height:42px;
-  border-radius:50%;
-  border:1px solid rgba(212,149,106,0.35);
-  background:rgba(13,13,28,0.75);
-  color:var(--gold);
-  font-size:1.1rem;
-  cursor:pointer;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  backdrop-filter:blur(8px);
-  transition:opacity 0.5s ease, background 0.2s;
-}
-#ctrl-toggle:hover { background:rgba(212,149,106,0.15); }
-#ctrl-toggle.faded { opacity:0; pointer-events:none; }
-
 /* ANIMATIONS */
 @keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
 @keyframes popIn  { from{opacity:0;transform:scale(0.2)} to{opacity:1;transform:scale(1)} }
@@ -457,9 +434,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
         <button class="i-btn send-btn" onclick="sendMsg()">↑</button>
       </div>
     </div>
-
-    <!-- Controls toggle button -->
-    <button id="ctrl-toggle" title="Toggle controls">⚙</button>
 
   </div><!-- /video-area -->
 </div>
@@ -1660,41 +1634,32 @@ va.addEventListener('touchend',e=>{
   }
 },{passive:true});
 
-// ── CONTROLS TOGGLE BUTTON ───────────────────────────────────
-const ctrlToggle = document.getElementById('ctrl-toggle');
-let ctrlFadeTimer = null;
-
-function showToggleBtn() {
-  ctrlToggle.classList.remove('faded');
-  clearTimeout(ctrlFadeTimer);
-  ctrlFadeTimer = setTimeout(() => {
-    ctrlToggle.classList.add('faded');
-  }, 10000);
+// ── CONTROLS AUTO-HIDE ───────────────────────────────────────
+let hideTimer;
+function showCtrls(){
+  va.classList.add('ctrls');
+  clearTimeout(hideTimer);
+  hideTimer=setTimeout(()=>va.classList.remove('ctrls'),5000);
 }
+// Desktop hover is handled by CSS :hover; mobile uses tap-toggle below
+// Touch: single tap on video area (not on a button) shows controls and auto-hides
+va.addEventListener('touchstart',e=>{
+  // Only trigger if the touch is directly on the video area or vid element (not on buttons/controls)
+  if(e.target===va||e.target===vid){
+    if(va.classList.contains('ctrls')){
+      va.classList.remove('ctrls');
+      clearTimeout(hideTimer);
+    } else {
+      showCtrls();
+    }
+  } else {
+    // Touching a control button — show controls and reset the 5s hide timer
+    showCtrls();
+  }
+},{passive:true});
 
-// Toggle button click — show/hide controls
-ctrlToggle.addEventListener('click', e => {
-  e.stopPropagation();
-  const visible = va.classList.toggle('ctrls-visible');
-  ctrlToggle.textContent = visible ? '✕' : '⚙';
-  showToggleBtn();
-});
-
-// Any tap on the video area (not on controls/panels/overlays) reveals the toggle button
-va.addEventListener('touchend', e => {
-  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle, #upload-ov, #wait-ov')) return;
-  if (isSwiping) return;
-  showToggleBtn();
-}, { passive: true });
-
-// Desktop: mouse click on bare video area also reveals button
-va.addEventListener('click', e => {
-  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle, #upload-ov, #wait-ov')) return;
-  showToggleBtn();
-});
-
-// Show button on room entry (auto-fades after 10s)
-showToggleBtn();
+// ── INVITE ─────────────────────────────────────────────────
+// Already defined above
 
 </script>
 </body>
