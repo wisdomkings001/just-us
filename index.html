@@ -77,9 +77,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
   padding:1rem 1.2rem;
   background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);
   display:flex; align-items:center; justify-content:space-between;
-  opacity:0; transition:opacity 0.3s;
+  opacity:0; transition:opacity 0.4s; pointer-events:none;
 }
-#video-area:hover #room-bar, #video-area.ctrls #room-bar { opacity:1; }
+#video-area.ctrls-visible #room-bar { opacity:1; pointer-events:all; }
 .room-brand { font-family:'Playfair Display',serif; font-size:1rem; }
 .room-brand em { font-style:italic; font-weight:700; color:var(--gold); }
 .room-right { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; justify-content:flex-end; }
@@ -99,9 +99,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
   padding:2rem 1.2rem 1.2rem;
   background:linear-gradient(to top,rgba(0,0,0,0.85) 0%,transparent 100%);
   display:flex; flex-direction:column; gap:0.75rem;
-  opacity:0; transition:opacity 0.3s; pointer-events:none;
+  opacity:0; transition:opacity 0.4s; pointer-events:none;
 }
-#video-area:hover #vid-controls, #video-area.ctrls #vid-controls { opacity:1; pointer-events:all; }
+#video-area.ctrls-visible #vid-controls { opacity:1; pointer-events:all; }
 .prog-wrap { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; cursor:pointer; }
 .prog-fill { height:100%; background:var(--gold); border-radius:2px; pointer-events:none; width:0%; transition:width 0.1s linear; }
 .prog-thumb { position:absolute; top:50%; left:0%; transform:translate(-50%,-50%); width:13px; height:13px; border-radius:50%; background:var(--gold); pointer-events:none; opacity:0; transition:opacity 0.2s; }
@@ -270,393 +270,28 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 #pl-file-input    { display:none; }
 #file-input-el    { display:none; }
 
-/* ANIMATIONS */
-@keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
-@keyframes popIn  { from{opacity:0;transform:scale(0.2)} to{opacity:1;transform:scale(1)} }
-@keyframes spin   { to{transform:rotate(360deg)} }
-@keyframes pulse  { 0%,100%{box-shadow:0 0 0 0 rgba(201,107,122,0.5)} 50%{box-shadow:0 0 0 6px rgba(201,107,122,0)} }
-@keyframes gestPop { 0%{opaci.spinner { width:38px; height:38px; border-radius:50%; border:2px solid rgba(212,149,106,0.2); border-top-color:var(--gold); animation:spin 1s linear infinite; }
-#wait-ov p { color:var(--muted); font-size:0.88rem; }
-
-/* gesture indicators */
-.gest-hint { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:#fff; font-size:1.1rem; font-weight:600; border-radius:12px; padding:0.6rem 1.2rem; pointer-events:none; opacity:0; transition:opacity 0.25s; z-index:20; backdrop-filter:blur(4px); }
-#gest-left  { left:8%; }
-#gest-right { right:8%; }
-.gest-hint.show { opacity:1; }
-
-/* brightness/volume overlay indicator */
-.hud-bar { position:absolute; top:50%; transform:translateY(-50%); width:4px; height:120px; background:rgba(255,255,255,0.15); border-radius:4px; z-index:20; pointer-events:none; overflow:hidden; }
-#hud-vol  { left:18px; }
-#hud-bri  { right:18px; }
-.hud-fill { position:absolute; bottom:0; left:0; right:0; background:var(--gold); border-radius:4px; transition:height 0.1s; }
-#hud-vol-lbl, #hud-bri-lbl { position:absolute; font-size:0.7rem; color:rgba(255,255,255,0.7); white-space:nowrap; transform:translateX(-50%); display:none; }
-#hud-vol-lbl  { top:-22px; left:2px; }
-#hud-bri-lbl  { top:-22px; left:2px; }
-
-/* PLAYLIST PANEL */
-#playlist-panel {
-  position:absolute; bottom:0; left:0; right:0; z-index:25;
-  background:var(--surface); border-top:1px solid var(--border);
-  max-height:0; overflow:hidden; transition:max-height 0.4s cubic-bezier(0.4,0,0.2,1);
+/* ── CTRL TOGGLE BUTTON ── */
+#ctrl-toggle {
+  position:absolute;
+  bottom:1.4rem;
+  right:1.2rem;
+  z-index:30;
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  border:1px solid rgba(212,149,106,0.35);
+  background:rgba(13,13,28,0.75);
+  color:var(--gold);
+  font-size:1.1rem;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  backdrop-filter:blur(8px);
+  transition:opacity 0.5s ease, background 0.2s;
 }
-#playlist-panel.open { max-height:55vh; overflow-y:auto; }
-.pl-hdr { padding:0.9rem 1.2rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:var(--surface); z-index:1; }
-.pl-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
-.pl-hdr-right { display:flex; gap:0.7rem; align-items:center; }
-.pl-add-btn { background:var(--gold-soft); border:1px solid rgba(212,149,106,0.3); color:var(--gold); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
-.pl-add-btn:hover { background:rgba(212,149,106,0.2); }
-.pl-clear-btn { background:rgba(201,107,122,0.12); border:1px solid rgba(201,107,122,0.25); color:var(--rose); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
-.pl-clear-btn:hover { background:rgba(201,107,122,0.25); }
-.close-pl { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
-#pl-list { padding:0.5rem 0; }
-.pl-item { display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; cursor:pointer; transition:background 0.15s; }
-.pl-item:hover { background:rgba(255,255,255,0.04); }
-.pl-item.playing { background:var(--gold-soft); }
-.pl-num { width:22px; text-align:center; font-size:0.75rem; color:var(--muted); flex-shrink:0; }
-.pl-item.playing .pl-num { color:var(--gold); }
-.pl-info { flex:1; min-width:0; }
-.pl-name { font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pl-item.playing .pl-name { color:var(--gold); }
-.pl-dur { font-size:0.72rem; color:var(--muted); margin-top:0.1rem; }
-.pl-remove { background:none; border:none; color:var(--muted); font-size:0.85rem; cursor:pointer; padding:0.2rem 0.4rem; border-radius:4px; opacity:0; transition:opacity 0.15s,color 0.15s; }
-.pl-item:hover .pl-remove { opacity:1; }
-.pl-remove:hover { color:var(--rose); }
-.pl-empty { padding:2rem; text-align:center; color:var(--muted); font-size:0.85rem; }
-
-/* CHAT PANEL */
-#chat-panel {
-  position:absolute; right:0; top:0; bottom:0; z-index:20;
-  width:300px; flex-shrink:0;
-  background:var(--surface); border-left:1px solid var(--border);
-  display:flex; flex-direction:column;
-  transform:translateX(100%);
-  transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
-}
-#chat-panel.open { transform:translateX(0); }
-.chat-hdr { padding:1rem 1.1rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.chat-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
-.close-c { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
-#chat-msgs { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:0.75rem; scrollbar-width:thin; scrollbar-color:var(--surface2) transparent; }
-#chat-msgs::-webkit-scrollbar { width:3px; }
-#chat-msgs::-webkit-scrollbar-thumb { background:var(--surface2); border-radius:2px; }
-.msg { display:flex; flex-direction:column; gap:0.2rem; max-width:90%; }
-.msg.me { align-self:flex-end; align-items:flex-end; }
-.msg.them { align-self:flex-start; }
-.msg-name { font-size:0.65rem; color:var(--muted); }
-.msg-bub { padding:0.55rem 0.85rem; border-radius:12px; font-size:0.86rem; line-height:1.5; word-break:break-word; }
-.msg.me   .msg-bub { background:var(--gold); color:#180d00; border-bottom-right-radius:3px; }
-.msg.them .msg-bub { background:var(--surface2); color:var(--text); border-bottom-left-radius:3px; }
-.msg-time { font-size:0.62rem; color:var(--muted); }
-
-/* voice bubble */
-.msg-voice-bub { display:flex; align-items:center; gap:0.55rem; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.5rem 0.8rem; min-width:160px; max-width:220px; }
-.msg.me .msg-voice-bub { background:rgba(212,149,106,0.18); border-color:rgba(212,149,106,0.3); }
-.v-play-btn { background:none; border:none; color:var(--gold); font-size:1rem; cursor:pointer; width:24px; height:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.msg.me .v-play-btn { color:#180d00; }
-.v-waveform { flex:1; height:24px; position:relative; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; }
-.msg.me .v-waveform { background:rgba(0,0,0,0.1); }
-.v-wave-fill { position:absolute; left:0; top:0; bottom:0; background:rgba(212,149,106,0.45); transition:width 0.1s linear; width:0%; border-radius:4px; }
-.msg.me .v-wave-fill { background:rgba(0,0,0,0.2); }
-.v-dur { font-size:0.72rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
-.msg.me .v-dur { color:rgba(24,13,0,0.65); }
-
-.chat-bottom { padding:0.75rem 0.85rem; border-top:1px solid var(--border); display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
-#chat-in { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.6rem 0.9rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none; transition:border-color 0.2s; }
-#chat-in:focus { border-color:rgba(212,149,106,0.35); }
-#chat-in::placeholder { color:var(--muted); }
-.i-btn { width:34px; height:34px; border-radius:50%; border:none; background:var(--surface2); color:var(--muted); font-size:0.95rem; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.2s,color 0.2s; }
-.i-btn:hover { background:var(--gold-soft); color:var(--gold); }
-.i-btn.rec { background:rgba(201,107,122,0.2); color:var(--rose); animation:pulse 1s ease infinite; }
-.i-btn.send-btn { background:var(--gold); color:#180d00; }
-.i-btn.send-btn:hover { opacity:0.85; }
-#mic-label { font-size:0.7rem; color:var(--rose); min-width:30px; font-variant-numeric:tabular-nums; display:none; }
-#mic-label.show { display:block; }
-
-/* MESSAGE POPUP (chat closed) */
-#msg-popup {
-  position:fixed; right:1rem; top:5rem; z-index:200;
-  background:rgba(14,14,28,0.95); border:1px solid var(--border);
-  border-radius:12px; padding:0.75rem 1rem; max-width:240px;
-  backdrop-filter:blur(10px); pointer-events:none;
-  opacity:0; transform:translateX(20px);
-  transition:opacity 0.3s,transform 0.3s;
-}
-#msg-popup.show { opacity:1; transform:translateX(0); }
-.popup-sender { font-size:0.7rem; color:var(--gold); margin-bottom:0.2rem; }
-.popup-body { font-size:0.84rem; word-break:break-word; }
-
-/* TOAST */
-#toast { position:fixed; bottom:1.8rem; left:50%; transform:translateX(-50%) translateY(14px); background:rgba(20,20,40,0.95); border:1px solid var(--border); color:var(--text); padding:0.6rem 1.1rem; border-radius:8px; font-size:0.82rem; opacity:0; transition:opacity 0.3s,transform 0.3s; z-index:300; backdrop-filter:blur(8px); pointer-events:none; white-space:nowrap; }
-#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-/* GUEST MOVIE REQUEST */
-#guest-req-btn {
-  display:none; font-size:0.72rem; color:var(--gold);
-  background:rgba(212,149,106,0.15); padding:0.3rem 0.75rem;
-  border-radius:20px; cursor:pointer; border:1px solid rgba(212,149,106,0.35);
-  backdrop-filter:blur(6px); transition:background 0.2s;
-}
-#guest-req-btn:hover { background:rgba(212,149,106,0.28); }
-#guest-req-btn:disabled { opacity:0.5; cursor:default; }
-
-/* Host approval popup */
-#approve-popup {
-  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
-  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
-  border-radius:14px; padding:1rem 1.2rem; z-index:400;
-  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
-  backdrop-filter:blur(12px); text-align:center; min-width:240px;
-}
-#approve-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
-.app-title { font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:0.4rem; }
-.app-msg { font-size:0.88rem; margin-bottom:0.8rem; }
-.app-btns { display:flex; gap:0.5rem; justify-content:center; }
-.app-yes { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
-.app-no  { background:rgba(201,107,122,0.2); color:var(--rose); border:1px solid rgba(201,107,122,0.3); border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; cursor:pointer; }
-
-/* Guest file input (hidden, triggered by button) */
-#guest-file-input { display:none; }
-#pl-file-input    { display:none; }
-#file-input-el    { display:none; }
-
-/* ANIMATIONS */
-@keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
-@keyframes popIn  { from{opacity:0;transform:scale(0.2)} to{opacity:1;transform:scale(1)} }
-@keyframes spin   { to{transform:rotate(360deg)} }
-@keyframes pulse  { 0%,100%{box-shadow:0 0 0 0 rgba(201,107,122,0.5)} 50%{box-shadow:0 0 0 6px rgba(201,107,122,0)} }
-@keyframes gestPop { 0%{opaci#s-home {
-  align-items:center; justify-content:center;
-  background:var(--bg);
-  background-image:radial-gradient(ellipse at 25% 35%,rgba(212,149,106,0.05) 0%,transparent 55%),radial-gradient(ellipse at 75% 65%,rgba(201,107,122,0.04) 0%,transparent 55%);
-}
-.home-wrap { width:100%; max-width:400px; padding:2rem; display:flex; flex-direction:column; gap:2rem; }
-.home-brand { text-align:center; }
-.home-brand h1 { font-family:'Playfair Display',serif; font-size:2rem; font-weight:400; }
-.home-brand h1 em { font-style:italic; font-weight:700; color:var(--gold); }
-.home-brand p { color:var(--muted); font-size:0.82rem; margin-top:0.4rem; letter-spacing:0.06em; }
-
-/* welcome back banner */
-.wb-banner { background:var(--gold-soft); border:1px solid rgba(212,149,106,0.2); border-radius:10px; padding:0.9rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
-.wb-banner p { font-size:0.88rem; }
-.wb-banner p span { color:var(--gold); font-weight:600; }
-.wb-change { background:none; border:none; color:var(--muted); font-size:0.75rem; cursor:pointer; text-decoration:underline; white-space:nowrap; padding:0; }
-.wb-change:hover { color:var(--text); }
-
-.tabs { display:flex; border-bottom:1px solid var(--border); }
-.tab-btn { flex:1; padding:0.75rem; background:none; border:none; color:var(--muted); font-family:'DM Sans',sans-serif; font-size:0.88rem; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color 0.2s,border-color 0.2s; }
-.tab-btn.on { color:var(--gold); border-bottom-color:var(--gold); }
-.tab-pane { display:none; flex-direction:column; gap:1rem; margin-top:1.5rem; }
-.tab-pane.on { display:flex; }
-.field { display:flex; flex-direction:column; gap:0.45rem; }
-.field label { font-size:0.72rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); }
-.field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.85rem 1rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.95rem; outline:none; transition:border-color 0.2s; }
-.field input:focus { border-color:rgba(212,149,106,0.45); }
-.field input::placeholder { color:var(--muted); }
-.btn-primary { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.9rem; font-family:'DM Sans',sans-serif; font-size:0.95rem; font-weight:600; cursor:pointer; letter-spacing:0.04em; transition:opacity 0.2s,transform 0.15s; }
-.btn-primary:hover { opacity:0.87; }
-.btn-primary:active { transform:scale(0.98); }
-
-/* ── ROOM ── */
-#s-room { flex-direction:row; }
-#video-area { flex:1; position:relative; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; min-width:0; }
-#vid { width:100%; height:100%; object-fit:contain; background:#000; display:block; }
-
-/* top bar */
-#room-bar {
-  position:absolute; top:0; left:0; right:0; z-index:10;
-  padding:1rem 1.2rem;
-  background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);
-  display:flex; align-items:center; justify-content:space-between;
-  opacity:0; transition:opacity 0.3s;
-}
-#video-area:hover #room-bar, #video-area.ctrls #room-bar { opacity:1; }
-.room-brand { font-family:'Playfair Display',serif; font-size:1rem; }
-.room-brand em { font-style:italic; font-weight:700; color:var(--gold); }
-.room-right { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; justify-content:flex-end; }
-.users-bar { display:flex; align-items:center; gap:0.5rem; }
-.u-pill { display:flex; align-items:center; gap:0.35rem; background:rgba(255,255,255,0.08); padding:0.28rem 0.65rem; border-radius:20px; font-size:0.75rem; backdrop-filter:blur(6px); }
-.dot { width:6px; height:6px; border-radius:50%; background:var(--offline); transition:background 0.4s; }
-.dot.on { background:var(--online); }
-.room-code-btn { font-size:0.72rem; letter-spacing:0.12em; color:var(--text); background:rgba(255,255,255,0.07); padding:0.3rem 0.75rem; border-radius:20px; cursor:pointer; border:none; backdrop-filter:blur(6px); transition:background 0.2s; }
-.room-code-btn:hover { background:rgba(255,255,255,0.12); }
-/* remove-file button */
-#remove-file-btn { display:none; font-size:0.72rem; color:var(--rose); background:rgba(201,107,122,0.15); padding:0.3rem 0.75rem; border-radius:20px; cursor:pointer; border:1px solid rgba(201,107,122,0.3); backdrop-filter:blur(6px); transition:background 0.2s; }
-#remove-file-btn:hover { background:rgba(201,107,122,0.28); }
-
-/* video controls */
-#vid-controls {
-  position:absolute; bottom:0; left:0; right:0; z-index:10;
-  padding:2rem 1.2rem 1.2rem;
-  background:linear-gradient(to top,rgba(0,0,0,0.85) 0%,transparent 100%);
-  display:flex; flex-direction:column; gap:0.75rem;
-  opacity:0; transition:opacity 0.3s;
-}
-#video-area:hover #vid-controls, #video-area.ctrls #vid-controls { opacity:1; }
-.prog-wrap { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; cursor:pointer; }
-.prog-fill { height:100%; background:var(--gold); border-radius:2px; pointer-events:none; width:0%; transition:width 0.1s linear; }
-.prog-thumb { position:absolute; top:50%; left:0%; transform:translate(-50%,-50%); width:13px; height:13px; border-radius:50%; background:var(--gold); pointer-events:none; opacity:0; transition:opacity 0.2s; }
-.prog-wrap:hover .prog-thumb { opacity:1; }
-.ctrl-row { display:flex; align-items:center; gap:0.6rem; }
-.c-btn { background:none; border:none; color:var(--text); font-size:1.15rem; cursor:pointer; padding:0.25rem; opacity:0.85; transition:opacity 0.2s,transform 0.15s; line-height:1; display:flex; align-items:center; justify-content:center; position:relative; }
-.c-btn:hover { opacity:1; transform:scale(1.12); }
-.c-btn.lg { font-size:1.55rem; }
-.c-btn .cbadge { position:absolute; top:-4px; right:-4px; width:15px; height:15px; border-radius:50%; background:var(--rose); font-size:0.55rem; display:none; align-items:center; justify-content:center; color:#fff; }
-.c-btn .cbadge.show { display:flex; }
-.time-txt { font-size:0.8rem; color:rgba(255,255,255,0.65); flex:1; font-variant-numeric:tabular-nums; white-space:nowrap; }
-
-/* upload overlay */
-#upload-ov { position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; background:#000; text-align:center; padding:2rem; }
-#upload-ov h2 { font-family:'Playfair Display',serif; font-size:1.8rem; font-weight:400; }
-#upload-ov p { color:var(--muted); font-size:0.88rem; max-width:260px; line-height:1.6; }
-.drop-zone { border:1px dashed rgba(212,149,106,0.4); border-radius:12px; padding:2.5rem 3rem; cursor:pointer; transition:border-color 0.2s,background 0.2s; }
-.drop-zone:hover { border-color:var(--gold); background:var(--gold-soft); }
-.drop-icon { font-size:2.8rem; margin-bottom:0.75rem; }
-.drop-zone span { color:var(--gold); }
-
-/* waiting overlay */
-#wait-ov { position:absolute; inset:0; z-index:5; display:none; flex-direction:column; align-items:center; justify-content:center; gap:1rem; background:#000; }
-#wait-ov.show { display:flex; }
-.spinner { width:38px; height:38px; border-radius:50%; border:2px solid rgba(212,149,106,0.2); border-top-color:var(--gold); animation:spin 1s linear infinite; }
-#wait-ov p { color:var(--muted); font-size:0.88rem; }
-
-/* gesture indicators */
-.gest-hint { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:#fff; font-size:1.1rem; font-weight:600; border-radius:12px; padding:0.6rem 1.2rem; pointer-events:none; opacity:0; transition:opacity 0.25s; z-index:20; backdrop-filter:blur(4px); }
-#gest-left  { left:8%; }
-#gest-right { right:8%; }
-.gest-hint.show { opacity:1; }
-
-/* brightness/volume overlay indicator */
-.hud-bar { position:absolute; top:50%; transform:translateY(-50%); width:4px; height:120px; background:rgba(255,255,255,0.15); border-radius:4px; z-index:20; pointer-events:none; overflow:hidden; }
-#hud-vol  { left:18px; }
-#hud-bri  { right:18px; }
-.hud-fill { position:absolute; bottom:0; left:0; right:0; background:var(--gold); border-radius:4px; transition:height 0.1s; }
-#hud-vol-lbl, #hud-bri-lbl { position:absolute; font-size:0.7rem; color:rgba(255,255,255,0.7); white-space:nowrap; transform:translateX(-50%); display:none; }
-#hud-vol-lbl  { top:-22px; left:2px; }
-#hud-bri-lbl  { top:-22px; left:2px; }
-
-/* PLAYLIST PANEL */
-#playlist-panel {
-  position:absolute; bottom:0; left:0; right:0; z-index:25;
-  background:var(--surface); border-top:1px solid var(--border);
-  max-height:0; overflow:hidden; transition:max-height 0.4s cubic-bezier(0.4,0,0.2,1);
-}
-#playlist-panel.open { max-height:55vh; overflow-y:auto; }
-.pl-hdr { padding:0.9rem 1.2rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:var(--surface); z-index:1; }
-.pl-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
-.pl-hdr-right { display:flex; gap:0.7rem; align-items:center; }
-.pl-add-btn { background:var(--gold-soft); border:1px solid rgba(212,149,106,0.3); color:var(--gold); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
-.pl-add-btn:hover { background:rgba(212,149,106,0.2); }
-.pl-clear-btn { background:rgba(201,107,122,0.12); border:1px solid rgba(201,107,122,0.25); color:var(--rose); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
-.pl-clear-btn:hover { background:rgba(201,107,122,0.25); }
-.close-pl { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
-#pl-list { padding:0.5rem 0; }
-.pl-item { display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; cursor:pointer; transition:background 0.15s; }
-.pl-item:hover { background:rgba(255,255,255,0.04); }
-.pl-item.playing { background:var(--gold-soft); }
-.pl-num { width:22px; text-align:center; font-size:0.75rem; color:var(--muted); flex-shrink:0; }
-.pl-item.playing .pl-num { color:var(--gold); }
-.pl-info { flex:1; min-width:0; }
-.pl-name { font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.pl-item.playing .pl-name { color:var(--gold); }
-.pl-dur { font-size:0.72rem; color:var(--muted); margin-top:0.1rem; }
-.pl-remove { background:none; border:none; color:var(--muted); font-size:0.85rem; cursor:pointer; padding:0.2rem 0.4rem; border-radius:4px; opacity:0; transition:opacity 0.15s,color 0.15s; }
-.pl-item:hover .pl-remove { opacity:1; }
-.pl-remove:hover { color:var(--rose); }
-.pl-empty { padding:2rem; text-align:center; color:var(--muted); font-size:0.85rem; }
-
-/* CHAT PANEL */
-#chat-panel {
-  position:absolute; right:0; top:0; bottom:0; z-index:20;
-  width:300px; flex-shrink:0;
-  background:var(--surface); border-left:1px solid var(--border);
-  display:flex; flex-direction:column;
-  transform:translateX(100%);
-  transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
-}
-#chat-panel.open { transform:translateX(0); }
-.chat-hdr { padding:1rem 1.1rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
-.chat-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
-.close-c { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
-#chat-msgs { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:0.75rem; scrollbar-width:thin; scrollbar-color:var(--surface2) transparent; }
-#chat-msgs::-webkit-scrollbar { width:3px; }
-#chat-msgs::-webkit-scrollbar-thumb { background:var(--surface2); border-radius:2px; }
-.msg { display:flex; flex-direction:column; gap:0.2rem; max-width:90%; }
-.msg.me { align-self:flex-end; align-items:flex-end; }
-.msg.them { align-self:flex-start; }
-.msg-name { font-size:0.65rem; color:var(--muted); }
-.msg-bub { padding:0.55rem 0.85rem; border-radius:12px; font-size:0.86rem; line-height:1.5; word-break:break-word; }
-.msg.me   .msg-bub { background:var(--gold); color:#180d00; border-bottom-right-radius:3px; }
-.msg.them .msg-bub { background:var(--surface2); color:var(--text); border-bottom-left-radius:3px; }
-.msg-time { font-size:0.62rem; color:var(--muted); }
-
-/* voice bubble */
-.msg-voice-bub { display:flex; align-items:center; gap:0.55rem; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.5rem 0.8rem; min-width:160px; max-width:220px; }
-.msg.me .msg-voice-bub { background:rgba(212,149,106,0.18); border-color:rgba(212,149,106,0.3); }
-.v-play-btn { background:none; border:none; color:var(--gold); font-size:1rem; cursor:pointer; width:24px; height:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.msg.me .v-play-btn { color:#180d00; }
-.v-waveform { flex:1; height:24px; position:relative; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; }
-.msg.me .v-waveform { background:rgba(0,0,0,0.1); }
-.v-wave-fill { position:absolute; left:0; top:0; bottom:0; background:rgba(212,149,106,0.45); transition:width 0.1s linear; width:0%; border-radius:4px; }
-.msg.me .v-wave-fill { background:rgba(0,0,0,0.2); }
-.v-dur { font-size:0.72rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
-.msg.me .v-dur { color:rgba(24,13,0,0.65); }
-
-.chat-bottom { padding:0.75rem 0.85rem; border-top:1px solid var(--border); display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
-#chat-in { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.6rem 0.9rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none; transition:border-color 0.2s; }
-#chat-in:focus { border-color:rgba(212,149,106,0.35); }
-#chat-in::placeholder { color:var(--muted); }
-.i-btn { width:34px; height:34px; border-radius:50%; border:none; background:var(--surface2); color:var(--muted); font-size:0.95rem; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.2s,color 0.2s; }
-.i-btn:hover { background:var(--gold-soft); color:var(--gold); }
-.i-btn.rec { background:rgba(201,107,122,0.2); color:var(--rose); animation:pulse 1s ease infinite; }
-.i-btn.send-btn { background:var(--gold); color:#180d00; }
-.i-btn.send-btn:hover { opacity:0.85; }
-#mic-label { font-size:0.7rem; color:var(--rose); min-width:30px; font-variant-numeric:tabular-nums; display:none; }
-#mic-label.show { display:block; }
-
-/* MESSAGE POPUP (chat closed) */
-#msg-popup {
-  position:fixed; right:1rem; top:5rem; z-index:200;
-  background:rgba(14,14,28,0.95); border:1px solid var(--border);
-  border-radius:12px; padding:0.75rem 1rem; max-width:240px;
-  backdrop-filter:blur(10px); pointer-events:none;
-  opacity:0; transform:translateX(20px);
-  transition:opacity 0.3s,transform 0.3s;
-}
-#msg-popup.show { opacity:1; transform:translateX(0); }
-.popup-sender { font-size:0.7rem; color:var(--gold); margin-bottom:0.2rem; }
-.popup-body { font-size:0.84rem; word-break:break-word; }
-
-/* TOAST */
-#toast { position:fixed; bottom:1.8rem; left:50%; transform:translateX(-50%) translateY(14px); background:rgba(20,20,40,0.95); border:1px solid var(--border); color:var(--text); padding:0.6rem 1.1rem; border-radius:8px; font-size:0.82rem; opacity:0; transition:opacity 0.3s,transform 0.3s; z-index:300; backdrop-filter:blur(8px); pointer-events:none; white-space:nowrap; }
-#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
-/* GUEST MOVIE REQUEST */
-#guest-req-btn {
-  display:none; font-size:0.72rem; color:var(--gold);
-  background:rgba(212,149,106,0.15); padding:0.3rem 0.75rem;
-  border-radius:20px; cursor:pointer; border:1px solid rgba(212,149,106,0.35);
-  backdrop-filter:blur(6px); transition:background 0.2s;
-}
-#guest-req-btn:hover { background:rgba(212,149,106,0.28); }
-#guest-req-btn:disabled { opacity:0.5; cursor:default; }
-
-/* Host approval popup */
-#approve-popup {
-  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
-  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
-  border-radius:14px; padding:1rem 1.2rem; z-index:400;
-  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
-  backdrop-filter:blur(12px); text-align:center; min-width:240px;
-}
-#approve-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
-.app-title { font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:0.4rem; }
-.app-msg { font-size:0.88rem; margin-bottom:0.8rem; }
-.app-btns { display:flex; gap:0.5rem; justify-content:center; }
-.app-yes { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
-.app-no  { background:rgba(201,107,122,0.2); color:var(--rose); border:1px solid rgba(201,107,122,0.3); border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; cursor:pointer; }
-
-/* Guest file input (hidden, triggered by button) */
-#guest-file-input { display:none; }
+#ctrl-toggle:hover { background:rgba(212,149,106,0.15); }
+#ctrl-toggle.faded { opacity:0; pointer-events:none; }
 
 /* ANIMATIONS */
 @keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
@@ -823,6 +458,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
       </div>
     </div>
 
+    <!-- Controls toggle button -->
+    <button id="ctrl-toggle" title="Toggle controls">⚙</button>
+
   </div><!-- /video-area -->
 </div>
 
@@ -893,11 +531,15 @@ let mediaRec=null, audioChunks=[], isRec=false, recStart=0, recTimerInt=null;
 let chatOpen=false, unread=0;
 let playlist=[], currentIdx=-1;
 let localBrightness=1.0;
+let knownDuration=0;
+let guestTimeSync={time:0,ts:0,playing:false};
 let heartbeatInt=null;
 let reconnecting=false;
 // RTC session guards — prevent duplicate peer connections from listener re-fires
 let guestRTCStarted=false;
 let hostWatchStarted=false;
+// Timestamp of the last videoReady session the guest handled (enables re-fire on new video)
+let lastVideoSession=0;
 // Track Firebase listeners so we can detach stale ones before new RTC sessions
 let fbListeners={}; // key → {ref, event}
 
@@ -988,6 +630,10 @@ function enterRoom(){
   watchPresence();
   watchChat();
   watchControl();
+  roomRef.child('videoDuration').on('value',s=>{
+    const d=s.val();
+    if(d&&isFinite(d)&&d>0){knownDuration=d;updateProg();}
+  });
   startHeartbeat();
 }
 // ── HEARTBEAT (keeps Firebase connection alive, prevents 1-min drop) ──
@@ -1015,8 +661,13 @@ async function attemptReconnect(){
     if(role==='host'){
       // Re-capture from the currently loaded video element
       const capture=vid.captureStream||vid.mozCaptureStream;
-      if(capture && vid.readyState>=2) await doHostRTC();
-      else toast('Could not reconnect — video not ready.');
+      if(capture && vid.readyState>=2){
+        await doHostRTC();
+        // Re-signal guest so it also reconnects (new timestamp triggers the listener)
+        await roomRef.child('videoReady').set(Date.now()).catch(()=>{});
+      } else {
+        toast('Could not reconnect — video not ready.');
+      }
     } else if(role==='guest'){
       guestRTCStarted=false; // allow doGuestRTC to run again
       await doGuestRTC();
@@ -1095,29 +746,20 @@ async function loadVideoFile(file, needsRTC=false){
     vid.addEventListener('loadeddata', async ()=>{
       clearTimeout(timeout);
       document.getElementById('wait-ov').classList.remove('show');
+      // Save duration so guest can display progress
+      if(roomRef&&vid.duration&&isFinite(vid.duration))
+        roomRef.child('videoDuration').set(vid.duration).catch(()=>{});
       // Start playback first so captureStream gets live frames
       try{ await vid.play(); }catch(_){}
       bindVideoUI();
       if(needsRTC){
-        await roomRef.child('videoReady').set(true);
+        // Close old connection first, then build new offer, THEN signal guest.
+        // This way the offer is already in Firebase when the guest starts connecting.
         if(pc){ pc.close(); pc=null; }
         await doHostRTC();
-        setTimeout(boostBitrate, 1500);
-      } else if(pc){
-        // Live RTC session — swap stream tracks in-place
-        try{
-          const capture=vid.captureStream||vid.mozCaptureStream;
-          if(capture){
-            const newStream=capture.call(vid);
-            const senders=pc.getSenders();
-            newStream.getTracks().forEach(newTrack=>{
-              const sender=senders.find(s=>s.track&&s.track.kind===newTrack.kind);
-              if(sender) sender.replaceTrack(newTrack).catch(()=>{});
-            });
-            localStream=newStream;
-            setTimeout(boostBitrate,1500);
-          }
-        } catch(err){ toast('Track swap error: '+err.message); }
+        // Use a timestamp so Firebase always fires the guest's on('value') listener,
+        // even if a video was already playing (true → true would be a no-op).
+        await roomRef.child('videoReady').set(Date.now());
       }
       resolve();
     }, {once:true});
@@ -1132,8 +774,13 @@ function boostBitrate(){
     if(!s.track)return;
     const p=s.getParameters();
     if(!p.encodings||!p.encodings.length) p.encodings=[{}];
-    if(s.track.kind==='video') p.encodings[0].maxBitrate=6*1024*1024; // 6 Mbps
-    if(s.track.kind==='audio') p.encodings[0].maxBitrate=128*1024;
+    if(s.track.kind==='video'){
+      p.encodings[0].maxBitrate = 20*1024*1024;          // 20 Mbps ceiling
+      p.encodings[0].degradationPreference = 'maintain-resolution'; // drop frames, never pixels
+      // Remove any forced downscale so native resolution is always used
+      delete p.encodings[0].scaleResolutionDownBy;
+    }
+    if(s.track.kind==='audio') p.encodings[0].maxBitrate = 192*1024; // 192 kbps audio
     s.setParameters(p).catch(()=>{});
   });
 }
@@ -1155,8 +802,8 @@ function removeFile(){
   _detachRTCListeners();
   if(pc){ pc.close(); pc=null; }
   // Reset session guards so next video can start a fresh RTC session
-  guestRTCStarted=false; hostWatchStarted=false;
-  if(roomRef) roomRef.child('videoReady').set(false);
+  guestRTCStarted=false; hostWatchStarted=false; lastVideoSession=0;
+  if(roomRef) roomRef.child('videoReady').set(null);
 }
 
 // ── CLEAR ENTIRE PLAYLIST ────────────────────────────────────
@@ -1171,11 +818,12 @@ function clearPlaylist(){
 async function doHostRTC(){
   // Detach any stale RTC-related Firebase listeners from previous session
   _detachRTCListeners();
-  // Clear stale ICE candidates and answer from Firebase so guest doesn't get old data
+  // Clear ALL stale signalling data — offer included — so guest never reads old data
   await Promise.all([
     roomRef.child('cands/host').remove().catch(()=>{}),
     roomRef.child('cands/guest').remove().catch(()=>{}),
     roomRef.child('answer').remove().catch(()=>{}),
+    roomRef.child('offer').remove().catch(()=>{}),
   ]);
 
   pc=new RTCPeerConnection(ICE);
@@ -1193,6 +841,8 @@ async function doHostRTC(){
         localStream=capture.call(vid);
       }
       if(!localStream.getTracks().length){ toast('No video tracks found — try playing the video first.'); return; }
+      // Tell the encoder this is pre-recorded content — WebRTC uses higher quality settings
+      localStream.getVideoTracks().forEach(t=>{ try{t.contentHint='detail';}catch(_){} });
       localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
       const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
       await pc.setLocalDescription(offer);
@@ -1240,50 +890,71 @@ function setupGuestFlow(){
   document.getElementById('upload-ov').style.display='none';
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Waiting for host to select a movie…';
+
   roomRef.child('videoReady').on('value',async s=>{
-    if(!s.val()) return;
-    if(guestRTCStarted) return; // prevent duplicate RTC from re-fires
+    const val=s.val();
+    // null/false means host removed the video
+    if(!val){
+      document.getElementById('wait-msg').textContent='Waiting for host to select a movie…';
+      document.getElementById('wait-ov').classList.add('show');
+      return;
+    }
+    // Same session as one we already handled — ignore re-fires
+    if(val===lastVideoSession) return;
+    lastVideoSession=val;
+
+    // Show "connecting" spinner so guest sees feedback immediately
+    document.getElementById('wait-msg').textContent='Connecting to stream…';
+    document.getElementById('wait-ov').classList.add('show');
     guestRTCStarted=true;
-    document.getElementById('wait-ov').classList.remove('show');
     await doGuestRTC();
   });
+
   // Guest can request to pick a movie
   setupGuestMovieRequest();
 }
 
 async function doGuestRTC(){
+  const mySession=lastVideoSession; // snapshot — if host switches again we bail out
   _detachRTCListeners();
   if(pc){ pc.close(); pc=null; }
   pc=new RTCPeerConnection(ICE);
   setupPCEvents();
 
   pc.ontrack=e=>{
+    if(mySession!==lastVideoSession) return; // superseded
     if(vid.srcObject===e.streams[0])return;
     vid.srcObject=e.streams[0];
     vid.muted=false;
     vid.play().catch(()=>{ toast('Tap to unmute and play'); });
     bindVideoUI();
+    document.getElementById('wait-ov').classList.remove('show');
   };
   pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guest').push(e.candidate.toJSON()); };
 
   // Retry offer fetch — host may not have written it yet
   let offer=null;
-  for(let attempt=0; attempt<8; attempt++){
+  for(let attempt=0; attempt<10; attempt++){
+    if(mySession!==lastVideoSession) return; // host already switched to newer video
     const snap=await roomRef.child('offer').once('value');
     offer=snap.val();
     if(offer) break;
-    await new Promise(r=>setTimeout(r,1000)); // wait 1s and retry
+    await new Promise(r=>setTimeout(r,800));
   }
   if(!offer){
+    if(mySession!==lastVideoSession) return;
+    document.getElementById('wait-ov').classList.remove('show');
     toast('Could not connect — no offer from host. Please refresh.');
-    guestRTCStarted=false; // allow retry
+    guestRTCStarted=false;
     return;
   }
 
   try{
+    if(mySession!==lastVideoSession) return;
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer=await pc.createAnswer();
     await pc.setLocalDescription(answer);
+    if(mySession!==lastVideoSession) return;
     await roomRef.child('answer').set({sdp:answer.sdp,type:answer.type});
 
     // Host ICE candidates — clear guest's old cands first, then listen
@@ -1295,7 +966,9 @@ async function doGuestRTC(){
     hostCandsRef.on('child_added', hostCandsHandler);
     fbListeners['cands_host']={ref:hostCandsRef, event:'child_added', handler:hostCandsHandler};
   }catch(err){
-    toast('Connection error: '+err.message);
+    if(mySession!==lastVideoSession) return; // silently discard errors for stale sessions
+    document.getElementById('wait-ov').classList.remove('show');
+    toast('Connection error: '+err.message+' — tap here to retry', 5000);
     guestRTCStarted=false;
   }
 }
@@ -1308,7 +981,11 @@ function setupPCEvents(){
       toast('Connection interrupted…');
       setTimeout(()=>{ if(pc&&pc.iceConnectionState==='disconnected') pc.restartIce(); },3000);
     }
-    if(st==='connected'||st==='completed'){ reconnecting=false; }
+    if(st==='connected'||st==='completed'){
+      reconnecting=false;
+      // Boost quality the instant the connection is live — don't wait for a timer
+      boostBitrate();
+    }
   };
   pc.onconnectionstatechange=()=>{
     if(pc.connectionState==='failed') attemptReconnect();
@@ -1328,12 +1005,18 @@ function renderPlaylist(){
   playlist.forEach((item,i)=>{
     const div=document.createElement('div');
     div.className='pl-item'+(i===currentIdx?' playing':'');
-    div.innerHTML=`
-      <span class="pl-num">${i===currentIdx?'▶':i+1}</span>
-      <div class="pl-info">
-        <div class="pl-name">${item.name}</div>
-      </div>
-      <button class="pl-remove" onclick="removeFromPlaylist(${i},event)" title="Remove">✕</button>`;
+    // Build structure safely — filename goes via textContent, never innerHTML
+    const numSpan=document.createElement('span');
+    numSpan.className='pl-num';
+    numSpan.textContent=i===currentIdx?'▶':String(i+1);
+    const info=document.createElement('div'); info.className='pl-info';
+    const nameDiv=document.createElement('div'); nameDiv.className='pl-name';
+    nameDiv.textContent=item.name; // safe: textContent never executes markup
+    info.appendChild(nameDiv);
+    const removeBtn=document.createElement('button');
+    removeBtn.className='pl-remove'; removeBtn.title='Remove'; removeBtn.textContent='✕';
+    removeBtn.addEventListener('click',ev=>removeFromPlaylist(i,ev));
+    div.append(numSpan,info,removeBtn);
     div.addEventListener('click',()=>playIdx(i,true));
     list.appendChild(div);
   });
@@ -1358,7 +1041,8 @@ function removeFromPlaylist(i,e){
       document.getElementById('upload-ov').style.display='flex';
       document.getElementById('remove-file-btn').style.display='none';
       if(pc){ pc.close(); pc=null; }
-      if(roomRef) roomRef.child('videoReady').set(false);
+      lastVideoSession=0;
+      if(roomRef) roomRef.child('videoReady').set(null);
     } else {
       const nextIdx = Math.min(i, playlist.length-1);
       playIdx(nextIdx, true);
@@ -1375,8 +1059,8 @@ async function playIdx(i, isHost=false){
   currentIdx=i;
   renderPlaylist();
   if(isHost&&role==='host'){
-    const isFirstEver = !pc || pc.connectionState==='closed' || pc.connectionState==='failed';
-    await loadVideoFile(playlist[i].file, isFirstEver);
+    // Always full RTC renegotiation — replaceTrack is unreliable on mobile
+    await loadVideoFile(playlist[i].file, true);
   }
 }
 function nextTrack(){ if(role==='host'&&playlist.length) playIdx((currentIdx+1)%playlist.length,true); }
@@ -1419,26 +1103,43 @@ function bindVideoUI(){
 
   // Progress bar: only allow seeking if this is a seekable local video (host)
   const progWrap = document.getElementById('prog-wrap');
-  progWrap.style.cursor = (role==='host') ? 'pointer' : 'default';
-  progWrap.style.pointerEvents = (role==='host') ? 'auto' : 'none';
+  progWrap.style.cursor = 'pointer';
+  progWrap.style.pointerEvents = 'auto';
 }
 
+function getDisplayTime(){
+  if(role!=='guest'||(isFinite(vid.duration)&&vid.duration>0)) return vid.currentTime;
+  return guestTimeSync.playing
+    ? guestTimeSync.time+(Date.now()-guestTimeSync.ts)/1000
+    : guestTimeSync.time;
+}
+function getDisplayDuration(){
+  return(isFinite(vid.duration)&&vid.duration>0)?vid.duration:knownDuration;
+}
 function updateProg(){
-  if(!vid.duration || !isFinite(vid.duration)) return;
-  const p=(vid.currentTime/vid.duration)*100;
+  const duration=getDisplayDuration();
+  if(!duration||!isFinite(duration)) return;
+  const t=getDisplayTime();
+  const p=Math.min(100,(t/duration)*100);
   document.getElementById('prog-fill').style.width=p+'%';
   document.getElementById('prog-thumb').style.left=p+'%';
-  document.getElementById('time-txt').textContent=fmt(vid.currentTime)+' / '+fmt(vid.duration);
+  document.getElementById('time-txt').textContent=fmt(t)+' / '+fmt(duration);
 }
 function setPPBtn(pl){ document.getElementById('pp-btn').textContent=pl?'⏸':'▶'; }
 
 document.getElementById('prog-wrap').addEventListener('click',e=>{
-  // Guard: only host with a real seekable video can use this
-  if(role!=='host') return;
-  if(!vid.duration || !isFinite(vid.duration)) return;
+  const dur=getDisplayDuration();
+  if(!dur||!isFinite(dur)) return;
   const r=e.currentTarget.getBoundingClientRect();
-  const seekTo=((e.clientX-r.left)/r.width)*vid.duration;
-  doSeek(seekTo);
+  const seekTo=Math.max(0,Math.min(((e.clientX-r.left)/r.width)*dur,dur));
+  if(role==='host'){
+    doSeek(seekTo);
+  } else {
+    if(!roomRef) return;
+    roomRef.child('ctrl').set({action:'seek',time:seekTo,ts:Date.now(),by:'guest'});
+    guestTimeSync.time=seekTo; guestTimeSync.ts=Date.now();
+    updateProg();
+  }
 });
 
 // Central seek function — sends ctrl AFTER seeked fires so time is accurate
@@ -1462,27 +1163,56 @@ function doSeek(time){
 let syncing=false;
 function watchControl(){
   roomRef.child('ctrl').on('value',s=>{
-    const d=s.val(); if(!d||d.by===role) return;
+    const d=s.val(); if(!d) return;
+    // Always sync duration if host included it
+    if(d.duration&&isFinite(d.duration)&&d.duration>0) knownDuration=d.duration;
+    // Update guest's estimated playback position for the progress bar
+    if(role==='guest'){
+      if(d.action==='play')
+        guestTimeSync={time:d.time+(Date.now()-d.ts)/1000,ts:Date.now(),playing:true};
+      else if(d.action==='pause')
+        guestTimeSync={time:d.time,ts:Date.now(),playing:false};
+      else if(d.action==='seek'&&d.by==='host')
+        guestTimeSync={time:d.time+(Date.now()-d.ts)/1000,ts:Date.now(),playing:guestTimeSync.playing};
+      updateProg();
+    }
+    if(d.by===role) return; // Don't re-apply your own commands
     syncing=true;
     if(d.action==='play'){
-      // Guest: srcObject stream can't seek — just play
       if(vid.srcObject){ vid.play().catch(()=>{}); }
       else { vid.currentTime=d.time+(Date.now()-d.ts)/1000; vid.play(); }
     } else if(d.action==='pause'){
       vid.pause();
-      if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+      if(!vid.srcObject&&isFinite(vid.duration)) vid.currentTime=d.time;
     } else if(d.action==='seek'){
-      // Guest stream can't seek — nothing to do; host already moved
-      if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+      if(role==='host'&&!vid.srcObject&&isFinite(vid.duration)){
+        // Guest requested a seek — apply to host's local video, which re-streams
+        syncing=false; doSeek(d.time); return;
+      } else if(!vid.srcObject&&isFinite(vid.duration)){
+        vid.currentTime=d.time;
+      }
     }
     setTimeout(()=>syncing=false,400);
   });
 }
-function sendCtrl(action){ if(!roomRef)return; roomRef.child('ctrl').set({action,time:vid.currentTime,ts:Date.now(),by:role}); }
+function sendCtrl(action){
+  if(!roomRef) return;
+  const dur=(isFinite(vid.duration)&&vid.duration>0)?vid.duration:null;
+  roomRef.child('ctrl').set({action,time:vid.currentTime,ts:Date.now(),by:role,duration:dur});
+}
 function togglePlay(){ if(vid.paused){vid.play();sendCtrl('play');}else{vid.pause();sendCtrl('pause');} }
 function skip(s){
-  if(role!=='host') return; // guest can't seek a stream
-  doSeek(vid.currentTime + s);
+  if(role==='host'){
+    doSeek(vid.currentTime+s);
+  } else {
+    if(!roomRef) return;
+    const cur=getDisplayTime();
+    const dur=getDisplayDuration();
+    const t=Math.max(0,dur?Math.min(cur+s,dur):cur+s);
+    roomRef.child('ctrl').set({action:'seek',time:t,ts:Date.now(),by:'guest'});
+    guestTimeSync.time=t; guestTimeSync.ts=Date.now();
+    updateProg();
+  }
 }
 function toggleMute(){ vid.muted=!vid.muted; document.getElementById('mute-btn').textContent=vid.muted?'🔇':'🔊'; }
 function goFullscreen(){
@@ -1700,6 +1430,8 @@ async function guestLoadAndStream(file){
 
   vid.addEventListener('loadeddata', async ()=>{
     document.getElementById('wait-ov').classList.remove('show');
+    if(roomRef&&vid.duration&&isFinite(vid.duration))
+      roomRef.child('videoDuration').set(vid.duration).catch(()=>{});
     bindVideoUI();
     // Signal host that guest has a video ready
     await roomRef.child('guestVideo').set({ready:true, ts:Date.now()});
@@ -1734,6 +1466,8 @@ async function doGuestStreamRTC(){
     localStream=capture.call(vid);
     if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid); }
     if(!localStream.getTracks().length){ toast('No video tracks found.'); return; }
+    // Same quality hint as the host-path
+    localStream.getVideoTracks().forEach(t=>{ try{t.contentHint='detail';}catch(_){} });
     localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
 
     const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
@@ -1760,15 +1494,20 @@ async function doGuestStreamRTC(){
     fbListeners['cands_guestStream']={ref:guestStreamRef, event:'child_added', handler:guestStreamHandler};
 
     pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/hostWatch').push(e.candidate.toJSON()); };
-    setTimeout(boostBitrate,1500);
   }catch(err){ toast('Stream error: '+err.message); }
 }
+
+// Track last guest-video session so a second guest-picked movie always reconnects
+let lastGuestVideoSession=0;
 
 // Host: watch for guest-initiated stream
 function watchGuestStream(){
   roomRef.child('guestVideo').on('value', async s=>{
-    if(!s.val()?.ready) return;
-    if(hostWatchStarted) return; // prevent duplicate connections
+    const val=s.val();
+    if(!val?.ready) return;
+    const ts=val.ts||0;
+    if(ts===lastGuestVideoSession) return; // already handled this session
+    lastGuestVideoSession=ts;
     hostWatchStarted=true;
     toast('Partner is streaming their movie! 🎬');
     await doHostWatchGuestRTC();
@@ -1921,33 +1660,42 @@ va.addEventListener('touchend',e=>{
   }
 },{passive:true});
 
-// ── CONTROLS AUTO-HIDE ───────────────────────────────────────
-let hideTimer;
-function showCtrls(){
-  va.classList.add('ctrls');
-  clearTimeout(hideTimer);
-  hideTimer=setTimeout(()=>va.classList.remove('ctrls'),5000);
-}
-va.addEventListener('mousemove', showCtrls);
-// Touch: single tap on video area (not on a button) shows controls and auto-hides
-va.addEventListener('touchstart',e=>{
-  // Only trigger if the touch is directly on the video area or vid element (not on buttons/controls)
-  if(e.target===va||e.target===vid){
-    if(va.classList.contains('ctrls')){
-      va.classList.remove('ctrls');
-      clearTimeout(hideTimer);
-    } else {
-      showCtrls();
-    }
-  } else {
-    // Touching a control button — reset the hide timer
-    clearTimeout(hideTimer);
-    hideTimer=setTimeout(()=>va.classList.remove('ctrls'),5000);
-  }
-},{passive:true});
+// ── CONTROLS TOGGLE BUTTON ───────────────────────────────────
+const ctrlToggle = document.getElementById('ctrl-toggle');
+let ctrlFadeTimer = null;
 
-// ── INVITE ─────────────────────────────────────────────────
-// Already defined above
+function showToggleBtn() {
+  ctrlToggle.classList.remove('faded');
+  clearTimeout(ctrlFadeTimer);
+  ctrlFadeTimer = setTimeout(() => {
+    ctrlToggle.classList.add('faded');
+  }, 10000);
+}
+
+// Toggle button click — show/hide controls
+ctrlToggle.addEventListener('click', e => {
+  e.stopPropagation();
+  const visible = va.classList.toggle('ctrls-visible');
+  ctrlToggle.textContent = visible ? '✕' : '⚙';
+  showToggleBtn();
+});
+
+// Any tap on the video area (not on controls/panels) reveals the toggle button
+va.addEventListener('touchend', e => {
+  // Don't trigger if tapping inside controls, chat, or playlist
+  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle')) return;
+  if (isSwiping) return;
+  showToggleBtn();
+}, { passive: true });
+
+// Desktop: mouse click on bare video area also reveals button
+va.addEventListener('click', e => {
+  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle')) return;
+  showToggleBtn();
+});
+
+// Show button on room entry (auto-fades after 10s)
+showToggleBtn();
 
 </script>
 </body>
