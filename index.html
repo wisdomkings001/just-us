@@ -1680,17 +1680,16 @@ ctrlToggle.addEventListener('click', e => {
   showToggleBtn();
 });
 
-// Any tap on the video area (not on controls/panels) reveals the toggle button
+// Any tap on the video area (not on controls/panels/overlays) reveals the toggle button
 va.addEventListener('touchend', e => {
-  // Don't trigger if tapping inside controls, chat, or playlist
-  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle')) return;
+  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle, #upload-ov, #wait-ov')) return;
   if (isSwiping) return;
   showToggleBtn();
 }, { passive: true });
 
 // Desktop: mouse click on bare video area also reveals button
 va.addEventListener('click', e => {
-  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle')) return;
+  if (e.target.closest('#vid-controls, #room-bar, #chat-panel, #playlist-panel, #ctrl-toggle, #upload-ov, #wait-ov')) return;
   showToggleBtn();
 });
 
