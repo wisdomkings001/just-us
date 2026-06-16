@@ -281,41 +281,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 @keyframes pulse  { 0%,100%{box-shadow:0 0 0 0 rgba(201,107,122,0.5)} 50%{box-shadow:0 0 0 6px rgba(201,107,122,0)} }
 @keyframes gestPop { 0%{opacity:0;transform:translateY(-50%) scale(0.8)} 20%{opacity:1;transform:translateY(-50%) scale(1)} 70%{opacity:1} 100%{opacity:0} }
 .gest-anim { animation:gestPop 0.8s ease forwards; }
-
-/* ── LIVE CAMERA FEED BOX ── */
-#cam-box {
-  position:absolute; top:10px; left:10px; z-index:8;
-  width:120px; height:82px; border-radius:10px;
-  overflow:hidden; background:#000; display:none;
-  border:1.5px solid rgba(212,149,106,0.55);
-  box-shadow:0 4px 20px rgba(0,0,0,0.7);
-  transition:opacity 0.3s;
-}
-#cam-box.show { display:block; }
-#cam-vid { width:100%; height:100%; object-fit:cover; display:block; transform:scaleX(-1); }
-#cam-box-close {
-  position:absolute; top:4px; right:4px; width:18px; height:18px;
-  border-radius:50%; background:rgba(0,0,0,0.65); border:none;
-  color:#fff; font-size:0.6rem; cursor:pointer;
-  display:flex; align-items:center; justify-content:center; z-index:9;
-  transition:background 0.2s;
-}
-#cam-box-close:hover { background:rgba(201,107,122,0.85); }
-#cam-box-label {
-  position:absolute; bottom:4px; left:6px;
-  font-size:0.58rem; color:rgba(255,255,255,0.75);
-  pointer-events:none; letter-spacing:0.04em;
-}
-
-/* CAMERA REQUEST POPUP */
-#cam-req-popup {
-  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
-  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
-  border-radius:14px; padding:1rem 1.2rem; z-index:400;
-  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
-  backdrop-filter:blur(12px); text-align:center; min-width:240px;
-}
-#cam-req-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -422,7 +387,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
           <span class="cbadge" id="cbadge">0</span>
         </button>
         <button class="c-btn" onclick="togglePlaylist()" title="Playlist">📋</button>
-        <button class="c-btn" id="live-feed-btn" onclick="toggleLiveFeed()" title="Live Feed">📷</button>
         <button class="c-btn" onclick="goFullscreen()">⛶</button>
       </div>
     </div>
@@ -437,13 +401,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
     </div>
     <div class="hud-bar" id="hud-bri">
       <div class="hud-fill" id="hud-bri-fill" style="height:100%"></div>
-    </div>
-
-    <!-- Camera live feed box (top-left PiP) -->
-    <div id="cam-box">
-      <video id="cam-vid" autoplay playsinline muted></video>
-      <button id="cam-box-close" onclick="turnOffCamera()" title="End camera">✕</button>
-      <span id="cam-box-label">Live</span>
     </div>
 
     <!-- Playlist panel -->
@@ -510,16 +467,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 </div>
 
 <!-- (file inputs moved to after s-room) -->
-
-<!-- Camera request popup -->
-<div id="cam-req-popup">
-  <div class="app-title">Live Feed Request 📷</div>
-  <div class="app-msg" id="cam-req-msg">Your partner wants to see you live</div>
-  <div class="app-btns">
-    <button class="app-yes" onclick="respondCamRequest(true)">Turn On 📷</button>
-    <button class="app-no"  onclick="respondCamRequest(false)">Decline ✕</button>
-  </div>
-</div>
 
 <!-- Firebase v9 compat -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -661,7 +608,6 @@ function enterRoom(){
   watchPresence();
   watchChat();
   watchControl();
-  watchCamSignal();
   startHeartbeat();
   // Show controls + toggle button immediately on entry
   setTimeout(showCtrls, 100);
@@ -1566,219 +1512,6 @@ function toggleChat(){
     document.getElementById('msg-popup').classList.remove('show');
     setTimeout(()=>{ document.getElementById('chat-msgs').scrollTop=9999; },100);
   }
-}
-
-// ── LIVE CAMERA FEED ─────────────────────────────────────────
-let camPc = null;
-let localCamStream = null;
-let camRole = null;          // 'sender' | 'receiver' | null
-let camFbListeners = {};
-let camRequesterName = null;
-let camSignalWatching = false;
-
-const camVidEl   = document.getElementById('cam-vid');
-const camBox     = document.getElementById('cam-box');
-const camBoxLbl  = document.getElementById('cam-box-label');
-const camReqPop  = document.getElementById('cam-req-popup');
-
-function _detachCamListeners(){
-  Object.values(camFbListeners).forEach(({ref,event,handler})=>{
-    try{ ref.off(event,handler); }catch(_){}
-  });
-  camFbListeners={};
-}
-
-function stopCameraFull(sendSignal){
-  _detachCamListeners();
-  if(camPc){ camPc.close(); camPc=null; }
-  if(localCamStream){ localCamStream.getTracks().forEach(t=>t.stop()); localCamStream=null; }
-  camVidEl.srcObject=null;
-  camBox.classList.remove('show');
-  camRole=null;
-  camRequesterName=null;
-  document.getElementById('live-feed-btn').textContent='📷';
-  camReqPop.classList.remove('show');
-  if(sendSignal && roomRef) roomRef.child('camSignal').set({status:'off',ts:Date.now()});
-}
-
-function turnOffCamera(){ stopCameraFull(true); }
-
-function toggleLiveFeed(){
-  if(!roomRef){ toast('Join a room first'); return; }
-  if(camRole!==null){
-    // Already active — click again to turn off
-    turnOffCamera();
-    return;
-  }
-  // Send camera request to partner
-  camRequesterName=myName;
-  roomRef.child('camSignal').set({
-    status:'requesting', requester:myName, requesterRole:role, ts:Date.now()
-  });
-  document.getElementById('live-feed-btn').textContent='📷⏳';
-  toast('Asking partner to turn on their camera…');
-}
-
-async function respondCamRequest(accept){
-  camReqPop.classList.remove('show');
-  if(!accept){
-    if(roomRef) roomRef.child('camSignal').update({status:'declined'});
-    return;
-  }
-  camRole='sender';
-  if(roomRef){
-    // Clear any stale signalling data before new session
-    await Promise.all([
-      roomRef.child('camSignal/offer').remove().catch(()=>{}),
-      roomRef.child('camSignal/answer').remove().catch(()=>{}),
-      roomRef.child('camSignal/cands_sender').remove().catch(()=>{}),
-      roomRef.child('camSignal/cands_receiver').remove().catch(()=>{})
-    ]);
-    await roomRef.child('camSignal').update({status:'active', ts:Date.now()});
-  }
-  doCamSender();
-}
-
-// Sender = the person who accepted (shares their own camera)
-async function doCamSender(){
-  _detachCamListeners();
-  if(camPc){ camPc.close(); camPc=null; }
-  try{
-    localCamStream=await navigator.mediaDevices.getUserMedia({video:true,audio:false});
-  }catch(err){
-    toast('Camera access denied 🚫');
-    if(roomRef) roomRef.child('camSignal').update({status:'declined'});
-    camRole=null;
-    return;
-  }
-  // Show self-preview (mirrored via CSS)
-  camVidEl.srcObject=localCamStream;
-  camBoxLbl.textContent='You';
-  camBox.classList.add('show');
-  document.getElementById('live-feed-btn').textContent='📷●';
-  toast('Camera on — partner can see you 📷');
-
-  camPc=new RTCPeerConnection(ICE);
-  localCamStream.getTracks().forEach(t=>camPc.addTrack(t,localCamStream));
-  camPc.onicecandidate=e=>{
-    if(e.candidate && roomRef) roomRef.child('camSignal/cands_sender').push(e.candidate.toJSON());
-  };
-
-  // Listen for answer from receiver
-  const ansRef=roomRef.child('camSignal/answer');
-  const ansHandler=async s=>{
-    const a=s.val();
-    if(a && camPc && !camPc.currentRemoteDescription){
-      try{ await camPc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
-    }
-  };
-  ansRef.on('value',ansHandler);
-  camFbListeners['cam_answer']={ref:ansRef,event:'value',handler:ansHandler};
-
-  // Listen for receiver's ICE candidates
-  const rcvRef=roomRef.child('camSignal/cands_receiver');
-  const rcvHandler=async s=>{
-    const c=s.val();
-    if(c && camPc) try{ await camPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
-  };
-  rcvRef.on('child_added',rcvHandler);
-  camFbListeners['cam_cands_receiver']={ref:rcvRef,event:'child_added',handler:rcvHandler};
-
-  try{
-    const offer=await camPc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
-    await camPc.setLocalDescription(offer);
-    await roomRef.child('camSignal/offer').set({sdp:offer.sdp,type:offer.type});
-  }catch(err){ toast('Camera offer error: '+err.message); }
-}
-
-// Receiver = the person who clicked Live Feed (watches partner's camera)
-async function doCamReceiver(){
-  _detachCamListeners();
-  if(camPc){ camPc.close(); camPc=null; }
-  camPc=new RTCPeerConnection(ICE);
-
-  camPc.ontrack=e=>{
-    camVidEl.srcObject=e.streams[0];
-    camBoxLbl.textContent='Live';
-    camBox.classList.add('show');
-    document.getElementById('live-feed-btn').textContent='📷●';
-    toast('Partner camera is live 📷');
-  };
-  camPc.onicecandidate=e=>{
-    if(e.candidate && roomRef) roomRef.child('camSignal/cands_receiver').push(e.candidate.toJSON());
-  };
-
-  // Listen for sender's ICE candidates
-  const sndRef=roomRef.child('camSignal/cands_sender');
-  const sndHandler=async s=>{
-    const c=s.val();
-    if(c && camPc) try{ await camPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
-  };
-  sndRef.on('child_added',sndHandler);
-  camFbListeners['cam_cands_sender']={ref:sndRef,event:'child_added',handler:sndHandler};
-
-  // Retry offer fetch (sender may not have written it yet)
-  let offer=null;
-  for(let attempt=0; attempt<8; attempt++){
-    const snap=await roomRef.child('camSignal/offer').once('value');
-    offer=snap.val();
-    if(offer) break;
-    await new Promise(r=>setTimeout(r,1000));
-  }
-  if(!offer){
-    toast('Camera stream not found — try again.');
-    camRole=null;
-    document.getElementById('live-feed-btn').textContent='📷';
-    return;
-  }
-  try{
-    await camPc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer=await camPc.createAnswer();
-    await camPc.setLocalDescription(answer);
-    await roomRef.child('camSignal/answer').set({sdp:answer.sdp,type:answer.type});
-  }catch(err){ toast('Camera receive error: '+err.message); }
-}
-
-function watchCamSignal(){
-  if(!roomRef || camSignalWatching) return;
-  camSignalWatching=true;
-  let firstFire=true;
-  roomRef.child('camSignal').on('value', s=>{
-    const d=s.val();
-    // On first listener fire, ignore stale states (older than 30s or already off)
-    if(firstFire){
-      firstFire=false;
-      if(!d || d.status==='off' || d.status==='idle') return;
-      if(d.ts && (Date.now()-d.ts)>30000) return;
-    }
-    if(!d) return;
-
-    // Someone requests to see MY camera
-    if(d.status==='requesting' && d.requester!==myName){
-      document.getElementById('cam-req-msg').textContent=`${d.requester} wants to see you live 📷`;
-      camReqPop.classList.add('show');
-    }
-
-    // Acceptor wrote 'active' — start receiving (only for the original requester)
-    if(d.status==='active' && d.requester===myName && camRole!=='receiver'){
-      camRole='receiver';
-      doCamReceiver();
-    }
-
-    // Partner declined my request
-    if(d.status==='declined' && d.requester===myName){
-      toast('Partner declined the camera request 🙅');
-      document.getElementById('live-feed-btn').textContent='📷';
-      camRole=null;
-      camRequesterName=null;
-    }
-
-    // Either side turned off
-    if(d.status==='off'){
-      camReqPop.classList.remove('show');
-      if(camRole!==null) stopCameraFull(false);
-    }
-  });
 }
 
 // ── INVITE ───────────────────────────────────────────────────
