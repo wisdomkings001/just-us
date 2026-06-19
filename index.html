@@ -180,6 +180,25 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 .pl-remove:hover { color:var(--rose); }
 .pl-empty { padding:2rem; text-align:center; color:var(--muted); font-size:0.85rem; }
 
+/* SETTINGS MENU */
+#settings-menu {
+  position:absolute; bottom:64px; right:12px; z-index:40;
+  background:rgba(14,14,28,0.97); border:1px solid var(--border);
+  border-radius:12px; padding:0.4rem; display:none; flex-direction:column; gap:0.15rem;
+  backdrop-filter:blur(12px); min-width:170px;
+  box-shadow:0 8px 28px rgba(0,0,0,0.6);
+}
+#settings-menu.open { display:flex; }
+.settings-item {
+  display:flex; align-items:center; gap:0.65rem;
+  background:none; border:none; color:var(--text);
+  font-size:0.85rem; padding:0.6rem 0.7rem; border-radius:8px;
+  cursor:pointer; text-align:left; transition:background 0.15s;
+  font-family:'DM Sans',sans-serif;
+}
+.settings-item:hover { background:rgba(255,255,255,0.07); }
+.settings-item .si-icon { font-size:1.05rem; width:22px; text-align:center; flex-shrink:0; }
+
 /* SUBTITLE PANEL */
 #sub-panel {
   position:absolute; bottom:0; left:0; right:0; z-index:25;
@@ -529,11 +548,22 @@ video::cue {
           💬
           <span class="cbadge" id="cbadge">0</span>
         </button>
-        <button class="c-btn" onclick="togglePlaylist()" title="Playlist">📋</button>
-        <button class="c-btn" id="sub-toggle-btn" onclick="toggleSubtitlePanel()" title="Subtitles">CC</button>
-        <button class="c-btn" id="live-feed-btn" onclick="toggleLiveFeed()" title="Live Feed">📷</button>
+        <button class="c-btn" id="settings-btn" onclick="toggleSettingsMenu()" title="More">⚙️</button>
         <button class="c-btn" onclick="goFullscreen()">⛶</button>
       </div>
+    </div>
+
+    <!-- Settings menu (Playlist · Subtitles · Live Call) -->
+    <div id="settings-menu">
+      <button class="settings-item" onclick="closeSettingsMenu();togglePlaylist();">
+        <span class="si-icon">📋</span><span>Playlist</span>
+      </button>
+      <button class="settings-item" onclick="closeSettingsMenu();toggleSubtitlePanel();">
+        <span class="si-icon" id="sub-toggle-btn">CC</span><span>Subtitles</span>
+      </button>
+      <button class="settings-item" onclick="closeSettingsMenu();toggleLiveFeed();">
+        <span class="si-icon" id="live-feed-btn">📷</span><span>Live Call</span>
+      </button>
     </div>
 
     <!-- Gesture indicators -->
@@ -604,7 +634,7 @@ video::cue {
       </div>
       <div class="sub-body">
         <div class="sub-row">
-          <button class="pl-add-btn" onclick="document.getElementById('sub-file-input').click()">+ Load file (.srt / .vtt)</button>
+          <button class="pl-add-btn" onclick="openSubtitlePicker()">+ Load file (.srt / .vtt)</button>
           <button class="pl-clear-btn" id="sub-remove-btn" onclick="removeSubtitle()" style="display:none">Remove</button>
         </div>
         <div class="sub-filename" id="sub-filename">No subtitle loaded</div>
@@ -910,7 +940,6 @@ async function loadVideoFile(file, needsRTC=false){
   document.getElementById('remove-file-btn').style.display='flex';
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Loading video…';
-  clearSubtitleState(); // subtitles are per-file; don't carry stale timing into a new video
 
   // Release previous
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
@@ -1227,10 +1256,12 @@ function removeFromPlaylist(i,e){
 }
 async function playIdx(i, isHost=false){
   if(i<0||i>=playlist.length)return;
+  const isSwitch = currentIdx!==-1 && currentIdx!==i; // already had a track playing, now switching to a different one
   currentIdx=i;
   renderPlaylist();
   if(isHost&&role==='host'){
     const isFirstEver = !pc || pc.connectionState==='closed' || pc.connectionState==='failed';
+    if(isSwitch) clearSubtitleState(); // different movie now — old subtitle timing would be wrong
     await loadVideoFile(playlist[i].file, isFirstEver);
   }
 }
@@ -1240,6 +1271,22 @@ function togglePlaylist(){
   const p=document.getElementById('playlist-panel');
   p.classList.toggle('open');
 }
+
+// ── SETTINGS MENU ───────────────────────────────────────────
+function toggleSettingsMenu(){
+  document.getElementById('settings-menu').classList.toggle('open');
+}
+function closeSettingsMenu(){
+  document.getElementById('settings-menu').classList.remove('open');
+}
+// Click/tap outside the menu closes it
+document.addEventListener('click', e=>{
+  const menu=document.getElementById('settings-menu');
+  const btn=document.getElementById('settings-btn');
+  if(menu.classList.contains('open') && !menu.contains(e.target) && e.target!==btn){
+    closeSettingsMenu();
+  }
+});
 
 // ── SUBTITLES ───────────────────────────────────────────────
 let subtitleCues = [];   // original parsed cues, never mutated: [{start,end,text}]
@@ -1293,10 +1340,41 @@ function updateSubtitleUI(){
   document.getElementById('sub-toggle-btn').style.opacity=subtitlesOn?'1':'0.85';
 }
 
+// Opening the native file picker backgrounds the tab momentarily; on some
+// (mostly mobile) browsers this can cause a large blob-backed video to lose
+// its decode buffer. Pausing first avoids fighting that transition, and we
+// resume cleanly afterward — whether a file was picked or the dialog was canceled.
+let subPickerWasPlaying = false;
+let subPickerFocusHandler = null;
+
+function openSubtitlePicker(){
+  subPickerWasPlaying = !vid.paused;
+  if(subPickerWasPlaying) vid.pause();
+
+  // Most browsers don't fire 'change' when the picker is canceled — fall back
+  // to resuming on window focus return, with a short delay so a real file
+  // selection's 'change' event gets first chance to handle the resume itself.
+  subPickerFocusHandler = ()=>{
+    setTimeout(()=>{
+      if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+      subPickerFocusHandler=null;
+    },400);
+  };
+  window.addEventListener('focus', subPickerFocusHandler, {once:true});
+
+  document.getElementById('sub-file-input').click();
+}
+
 document.getElementById('sub-file-input').addEventListener('change', async e=>{
+  // A real selection happened — the focus fallback isn't needed for this round
+  if(subPickerFocusHandler){ window.removeEventListener('focus', subPickerFocusHandler); subPickerFocusHandler=null; }
+
   const file=e.target.files[0];
   e.target.value='';
-  if(!file) return;
+  if(!file){
+    if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+    return;
+  }
   try{
     const text=await file.text();
     const cues=parseSubtitles(text);
@@ -1311,6 +1389,9 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
     updateSubtitleUI();
     toast('Subtitles loaded ✓');
   }catch(err){ toast('Subtitle error: '+err.message); }
+  finally{
+    if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+  }
 });
 
 function toggleSubtitles(){
@@ -1708,7 +1789,6 @@ function approveGuestRequest(allow){
 async function guestLoadAndStream(file){
   document.getElementById('wait-ov').classList.remove('show');
   document.getElementById('wait-msg').textContent='Loading your movie…';
-  clearSubtitleState(); // subtitles are per-file; don't carry stale timing into a new video
 
   // Show a mini loading indicator
   document.getElementById('wait-ov').classList.add('show');
@@ -2274,7 +2354,7 @@ document.getElementById('hud-bri').style.transition='opacity 0.4s';
 updateHUDs();
 
 va.addEventListener('touchstart',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel')) return; // don't hijack overlay-panel touches
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // don't hijack overlay-panel touches
   const t=e.touches[0];
   swipeStartY=t.clientY; swipeStartX=t.clientX;
   swipeSide=t.clientX<va.offsetWidth/2?'left':'right';
@@ -2282,7 +2362,7 @@ va.addEventListener('touchstart',e=>{
 },{passive:true});
 
 va.addEventListener('touchmove',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel')) return; // let overlay panels handle their own scroll/touch
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // let overlay panels handle their own scroll/touch
   if(!e.touches.length)return;
   const t=e.touches[0];
   const dy=swipeStartY-t.clientY;
@@ -2308,7 +2388,7 @@ va.addEventListener('touchmove',e=>{
 },{passive:false});
 
 va.addEventListener('touchend',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel')) return; // don't trigger tap-to-skip on overlay panels
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // don't trigger tap-to-skip on overlay panels
   if(isSwiping){isSwiping=false;return;}
   const t=e.changedTouches[0];
   const isRight=t.clientX>va.offsetWidth/2;
