@@ -878,20 +878,18 @@ async function loadVideoFile(file, needsRTC=false){
         await roomRef.child('videoReady').set(true);
         if(pc){ pc.close(); pc=null; }
         await doHostRTC();
-        setTimeout(boostBitrate, 1500);
       } else if(pc){
         // Live RTC session — swap stream tracks in-place
         try{
           const capture=vid.captureStream||vid.mozCaptureStream;
           if(capture){
-            const newStream=capture.call(vid);
+            const newStream=capture.call(vid,30); // keep 30fps on swap too
             const senders=pc.getSenders();
             newStream.getTracks().forEach(newTrack=>{
               const sender=senders.find(s=>s.track&&s.track.kind===newTrack.kind);
               if(sender) sender.replaceTrack(newTrack).catch(()=>{});
             });
             localStream=newStream;
-            setTimeout(boostBitrate,1500);
           }
         } catch(err){ toast('Track swap error: '+err.message); }
       }
@@ -902,17 +900,8 @@ async function loadVideoFile(file, needsRTC=false){
   });
 }
 
-function boostBitrate(){
-  if(!pc)return;
-  pc.getSenders().forEach(s=>{
-    if(!s.track)return;
-    const p=s.getParameters();
-    if(!p.encodings||!p.encodings.length) p.encodings=[{}];
-    if(s.track.kind==='video') p.encodings[0].maxBitrate=6*1024*1024; // 6 Mbps
-    if(s.track.kind==='audio') p.encodings[0].maxBitrate=128*1024;
-    s.setParameters(p).catch(()=>{});
-  });
-}
+// (bitrate is now set reliably via addTransceiver/sendEncodings at negotiation time —
+// no separate boost step needed)
 
 // ── REMOVE FILE (stop current video, keep playlist intact) ──
 function removeFile(){
@@ -962,15 +951,37 @@ async function doHostRTC(){
 
   const doCapture=async()=>{
     try{
-      localStream=capture.call(vid);
+      localStream=capture.call(vid,30); // lock capture to 30fps
       // Wait for tracks if captureStream returned empty (can happen on first frame)
       if(!localStream.getTracks().length){
         await new Promise(r=>setTimeout(r,500));
-        localStream=capture.call(vid);
+        localStream=capture.call(vid,30);
       }
       if(!localStream.getTracks().length){ toast('No video tracks found — try playing the video first.'); return; }
-      localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-      const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
+
+      // addTransceiver + sendEncodings sets the bitrate ceiling DURING negotiation
+      // (setParameters() after the fact is unreliable — browsers often reject it
+      // because the encodings array shape doesn't match what was negotiated)
+      localStream.getTracks().forEach(t=>{
+        const tx=pc.addTransceiver(t,{
+          direction:'sendonly',
+          sendEncodings:[{maxBitrate: t.kind==='video' ? 8*1000*1000 : 192*1000}]
+        });
+        // Prefer H.264 (matches most source files, avoids decode→re-encode quality loss)
+        if(t.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+          try{
+            const caps=RTCRtpSender.getCapabilities('video').codecs;
+            const ordered=[
+              ...caps.filter(c=>/H264/i.test(c.mimeType)),
+              ...caps.filter(c=>/VP9/i.test(c.mimeType)),
+              ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
+            ];
+            tx.setCodecPreferences(ordered);
+          }catch(_){}
+        }
+      });
+
+      const offer=await pc.createOffer();
       await pc.setLocalDescription(offer);
       await roomRef.child('offer').set({sdp:offer.sdp,type:offer.type});
 
@@ -1567,12 +1578,30 @@ async function doGuestStreamRTC(){
   hostWatchStarted=false;
 
   try{
-    localStream=capture.call(vid);
-    if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid); }
+    localStream=capture.call(vid,30); // lock capture to 30fps
+    if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid,30); }
     if(!localStream.getTracks().length){ toast('No video tracks found.'); return; }
-    localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
 
-    const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
+    // addTransceiver + sendEncodings sets bitrate reliably during negotiation
+    localStream.getTracks().forEach(t=>{
+      const tx=pc.addTransceiver(t,{
+        direction:'sendonly',
+        sendEncodings:[{maxBitrate: t.kind==='video' ? 8*1000*1000 : 192*1000}]
+      });
+      if(t.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+        try{
+          const caps=RTCRtpSender.getCapabilities('video').codecs;
+          const ordered=[
+            ...caps.filter(c=>/H264/i.test(c.mimeType)),
+            ...caps.filter(c=>/VP9/i.test(c.mimeType)),
+            ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
+          ];
+          tx.setCodecPreferences(ordered);
+        }catch(_){}
+      }
+    });
+
+    const offer=await pc.createOffer();
     await pc.setLocalDescription(offer);
     await roomRef.child('guestOffer').set({sdp:offer.sdp,type:offer.type});
 
@@ -1596,7 +1625,6 @@ async function doGuestStreamRTC(){
     fbListeners['cands_guestStream']={ref:guestStreamRef, event:'child_added', handler:guestStreamHandler};
 
     pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/hostWatch').push(e.candidate.toJSON()); };
-    setTimeout(boostBitrate,1500);
   }catch(err){ toast('Stream error: '+err.message); }
 }
 
@@ -1782,7 +1810,14 @@ async function respondCamRequest(accept){
 /* ── shared media helper ──────────────────────────────────── */
 async function getLocalCamera(){
   try{
-    return await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    return await navigator.mediaDevices.getUserMedia({
+      video:true,
+      audio:{
+        echoCancellation:false, // movie audio playing through speakers shouldn't be treated as "echo" to cancel
+        noiseSuppression:true,  // keep — cleans background hiss, unrelated to movie audio
+        autoGainControl:true    // keep — keeps voice level consistent, unrelated to movie audio
+      }
+    });
   }catch(err){
     toast('Camera/mic access denied 🚫');
     return null;
@@ -2060,7 +2095,7 @@ document.getElementById('hud-bri').style.transition='opacity 0.4s';
 updateHUDs();
 
 va.addEventListener('touchstart',e=>{
-  if(e.target.closest('#cam-window')) return; // don't hijack camera-window touches
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel')) return; // don't hijack overlay-panel touches
   const t=e.touches[0];
   swipeStartY=t.clientY; swipeStartX=t.clientX;
   swipeSide=t.clientX<va.offsetWidth/2?'left':'right';
@@ -2068,7 +2103,7 @@ va.addEventListener('touchstart',e=>{
 },{passive:true});
 
 va.addEventListener('touchmove',e=>{
-  if(e.target.closest('#cam-window')) return; // let cam-window handle its own touches
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel')) return; // let overlay panels handle their own scroll/touch
   if(!e.touches.length)return;
   const t=e.touches[0];
   const dy=swipeStartY-t.clientY;
@@ -2094,7 +2129,7 @@ va.addEventListener('touchmove',e=>{
 },{passive:false});
 
 va.addEventListener('touchend',e=>{
-  if(e.target.closest('#cam-window')) return; // don't trigger tap-to-skip on camera window
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel')) return; // don't trigger tap-to-skip on overlay panels
   if(isSwiping){isSwiping=false;return;}
   const t=e.changedTouches[0];
   const isRight=t.clientX>va.offsetWidth/2;
