@@ -220,15 +220,38 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
 .sub-delay-val { font-size:0.78rem; color:var(--gold); min-width:48px; text-align:center; font-variant-numeric:tabular-nums; }
 .sub-reset-btn { align-self:flex-start; background:none; border:none; color:var(--muted); font-size:0.75rem; text-decoration:underline; cursor:pointer; padding:0; }
 .sub-reset-btn:hover { color:var(--rose); }
+.sub-divider { height:1px; background:var(--border); margin:0.1rem 0; }
+.sub-style-row span:first-child { font-size:0.85rem; color:var(--text); }
+.sub-color-swatch { width:34px; height:28px; border:1px solid var(--border); border-radius:7px; background:none; cursor:pointer; padding:0; }
+.sub-color-swatch::-webkit-color-swatch-wrapper { padding:2px; }
+.sub-color-swatch::-webkit-color-swatch { border:none; border-radius:5px; }
+#sub-opacity-input { width:90px; accent-color:var(--gold); }
 
-/* Native caption styling — larger, legible, matches app theme */
-video::cue {
-  background:rgba(0,0,0,0.75);
-  color:var(--text);
-  font-size:1.05rem;
-  font-family:'DM Sans',sans-serif;
-  padding:0.1em 0.3em;
+/* CUSTOM SUBTITLE OVERLAY — replaces native captions so it can be dragged & pinch-resized */
+#sub-overlay {
+  position:absolute; left:50%; bottom:9%; transform:translateX(-50%);
+  max-width:86%; z-index:20;
+  pointer-events:none; /* default: taps pass straight through to the video */
+  display:none;
 }
+#sub-overlay.show { display:block; }
+#sub-overlay.reposition-mode {
+  pointer-events:auto; cursor:grab; touch-action:none;
+  outline:2px dashed rgba(212,149,106,0.65); outline-offset:5px; border-radius:8px;
+}
+#sub-overlay.reposition-mode:active { cursor:grabbing; }
+#sub-overlay-text {
+  display:inline-block; padding:0.25em 0.55em; border-radius:6px;
+  font-family:'DM Sans',sans-serif; font-weight:500;
+  white-space:pre-wrap; text-align:center; line-height:1.3;
+}
+#sub-resize-handle {
+  display:none; position:absolute; bottom:-7px; right:-7px;
+  width:20px; height:20px; border-radius:50%;
+  background:var(--gold); border:2px solid var(--surface);
+  cursor:se-resize; touch-action:none;
+}
+#sub-overlay.reposition-mode #sub-resize-handle { display:block; }
 
 /* CHAT PANEL */
 #chat-panel {
@@ -509,9 +532,7 @@ video::cue {
     </div>
 
     <!-- Video -->
-    <video id="vid" playsinline>
-      <track id="sub-track-el" kind="subtitles" label="Custom" srclang="en">
-    </video>
+    <video id="vid" playsinline></video>
 
     <!-- Upload overlay (host) -->
     <div id="upload-ov">
@@ -624,8 +645,6 @@ video::cue {
         <div class="pl-empty">No files added yet</div>
       </div>
     </div>
-    <input type="file" id="pl-file-input-OLD-REMOVED" style="display:none">
-
     <!-- Subtitle panel -->
     <div id="sub-panel">
       <div class="pl-hdr">
@@ -655,7 +674,44 @@ video::cue {
           </div>
         </div>
         <button class="sub-reset-btn" onclick="resetSubDelay()">Reset delay to 0</button>
+
+        <div class="sub-divider"></div>
+
+        <div class="sub-row sub-style-row">
+          <span>Text size</span>
+          <div class="sub-delay-ctrls">
+            <button class="sub-delay-btn" onclick="adjustSubFontSize(-2)">A−</button>
+            <span class="sub-delay-val" id="sub-fontsize-val">22px</span>
+            <button class="sub-delay-btn" onclick="adjustSubFontSize(2)">A+</button>
+          </div>
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Text colour</span>
+          <input type="color" id="sub-color-input" class="sub-color-swatch" value="#fdf6ec" onchange="setSubTextColor(this.value)">
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Background</span>
+          <input type="color" id="sub-bg-input" class="sub-color-swatch" value="#000000" onchange="setSubBgColor(this.value)">
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Background opacity</span>
+          <div class="sub-delay-ctrls">
+            <input type="range" id="sub-opacity-input" min="0" max="100" value="70" oninput="setSubBgOpacity(this.value)">
+            <span class="sub-delay-val" id="sub-opacity-val">70%</span>
+          </div>
+        </div>
+        <div class="sub-row sub-toggle-row">
+          <span>Reposition (drag / pinch)</span>
+          <button class="sub-switch" id="sub-reposition-switch" onclick="toggleSubReposition()" title="Toggle drag &amp; pinch-resize"></button>
+        </div>
+        <button class="sub-reset-btn" onclick="resetSubStyle()">Reset appearance &amp; position</button>
       </div>
+    </div>
+
+    <!-- Custom draggable / pinch-resizable subtitle overlay -->
+    <div id="sub-overlay">
+      <div id="sub-overlay-text"></div>
+      <div id="sub-resize-handle"></div>
     </div>
 
     <!-- Chat panel (inside video-area so it overlays correctly) -->
@@ -935,11 +991,86 @@ function setupHostFlow(){
   watchGuestStream();
 }
 
+// ── MKV SUPPORT ─────────────────────────────────────────────
+// Chrome/Edge cannot open the Matroska (.mkv) container at all, regardless of
+// the codec inside — that's why MKV uploads showed a blank screen with a
+// vague "unsupported format" error rather than playing. We detect MKV files
+// here and remux them into an MP4 container in-browser via ffmpeg.wasm before
+// handing them to the player. Video is stream-copied (instant, lossless, no
+// quality loss); audio is transcoded to AAC since MKV rips commonly carry
+// AC3/DTS audio, which browsers can't decode either way.
+// NOTE: this downloads a ~30MB converter the first time (cached after), and
+// requires an internet connection. If the video codec itself genuinely isn't
+// browser-decodable (rare — e.g. very old DivX/Xvid), conversion will still
+// fail; in that case you'll get a clear message instead of a silent blank screen.
+let ffmpegInstance=null;
+let ffmpegLoadingPromise=null;
+
+async function getFFmpeg(){
+  if(ffmpegInstance) return ffmpegInstance;
+  if(ffmpegLoadingPromise) return ffmpegLoadingPromise;
+  ffmpegLoadingPromise=(async()=>{
+    const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+    const { toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
+    const ffmpeg=new FFmpeg();
+    const baseURL='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`,'application/wasm'),
+    });
+    ffmpegInstance=ffmpeg;
+    return ffmpeg;
+  })();
+  return ffmpegLoadingPromise;
+}
+
+// Returns the original file untouched if it's not MKV (zero overhead).
+// For MKV files, returns a converted MP4 File, or null on failure (toast already shown).
+async function prepareVideoFile(file){
+  const isMkv = /\.mkv$/i.test(file.name) || file.type==='video/x-matroska';
+  if(!isMkv) return file;
+
+  const waitMsg=document.getElementById('wait-msg');
+  document.getElementById('wait-ov').classList.add('show');
+  if(waitMsg) waitMsg.textContent='Preparing MKV converter…';
+
+  try{
+    const { fetchFile } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
+    const ffmpeg=await getFFmpeg();
+
+    ffmpeg.on('progress', ({progress})=>{
+      if(waitMsg && progress>=0 && progress<=1) waitMsg.textContent=`Converting MKV… ${Math.round(progress*100)}%`;
+    });
+
+    if(waitMsg) waitMsg.textContent='Converting MKV…';
+    await ffmpeg.writeFile('input.mkv', await fetchFile(file));
+    await ffmpeg.exec(['-i','input.mkv','-c:v','copy','-c:a','aac','-b:a','192k','-movflags','faststart','output.mp4']);
+    const data=await ffmpeg.readFile('output.mp4');
+    ffmpeg.deleteFile('input.mkv').catch(()=>{});
+    ffmpeg.deleteFile('output.mp4').catch(()=>{});
+
+    const convertedName=file.name.replace(/\.mkv$/i,'.mp4');
+    return new File([data.buffer], convertedName, {type:'video/mp4'});
+  }catch(err){
+    toast('⚠️ Couldn\'t convert this MKV — check your internet connection, or its video codec may be unsupported.');
+    document.getElementById('wait-ov').classList.remove('show');
+    return null;
+  }
+}
+
 async function loadVideoFile(file, needsRTC=false){
   document.getElementById('upload-ov').style.display='none';
   document.getElementById('remove-file-btn').style.display='flex';
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Loading video…';
+
+  file = await prepareVideoFile(file); // converts MKV → MP4 first; passes through untouched otherwise
+  if(!file){
+    document.getElementById('wait-ov').classList.remove('show');
+    document.getElementById('upload-ov').style.display='flex';
+    document.getElementById('remove-file-btn').style.display='none';
+    return;
+  }
 
   // Release previous
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
@@ -947,7 +1078,7 @@ async function loadVideoFile(file, needsRTC=false){
   vid.onerror=null;
 
   const url=URL.createObjectURL(file);
-  vid.src=url; vid.volume=0; vid.muted=false; // volume=0 keeps host silent; muted=false lets captureStream capture audio
+  vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
 
   vid.onerror=()=>{
     document.getElementById('wait-ov').classList.remove('show');
@@ -1145,6 +1276,7 @@ async function doGuestRTC(){
     if(vid.srcObject===e.streams[0])return;
     vid.srcObject=e.streams[0];
     vid.muted=false;
+    vid.volume=0.5; // explicit reset — vid is a shared element and could otherwise inherit a stale 0 from an earlier sender session
     vid.play().catch(()=>{ toast('Tap to unmute and play'); });
     bindVideoUI();
   };
@@ -1289,9 +1421,14 @@ document.addEventListener('click', e=>{
 });
 
 // ── SUBTITLES ───────────────────────────────────────────────
-let subtitleCues = [];   // original parsed cues, never mutated: [{start,end,text}]
-let subDelay     = 0;    // seconds; positive = subtitles appear later
-let subtitlesOn  = false;
+let subtitleCues  = [];      // original parsed cues, never mutated: [{start,end,text}]
+let subDelay      = 0;       // seconds; positive = subtitles appear later
+let subtitlesOn   = false;
+let subFontSize   = 22;      // px
+let subTextColor  = '#fdf6ec';
+let subBgColor    = '#000000';
+let subBgOpacity  = 70;      // percent
+let subReposition = false;   // drag/pinch mode toggle
 
 function toggleSubtitlePanel(){
   document.getElementById('sub-panel').classList.toggle('open');
@@ -1321,16 +1458,39 @@ function parseSubtitles(text){
   return cues;
 }
 
-// Rebuilds the live TextTrack from original cues + current delay (no drift, trivial reset)
-function rebuildSubtitleTrack(){
-  const trackEl=document.getElementById('sub-track-el');
-  const tt=trackEl.track;
-  Array.from(tt.cues||[]).forEach(c=>tt.removeCue(c));
-  subtitleCues.forEach(c=>{
-    const s=Math.max(0,c.start+subDelay);
-    const e=Math.max(s+0.05,c.end+subDelay);
-    try{ tt.addCue(new VTTCue(s,e,c.text)); }catch(_){}
-  });
+// Custom-rendered captions (drag/pinch require a real DOM element — browsers
+// give zero control over native <track> captions, so we draw these ourselves).
+// Looks up the active cue against currentTime+delay on every frame tick.
+function updateActiveSubtitleCue(){
+  const overlay=document.getElementById('sub-overlay');
+  if(!subtitlesOn || !subtitleCues.length){
+    overlay.classList.remove('show');
+    return;
+  }
+  const t=vid.currentTime;
+  const active=subtitleCues.find(c=> t>=(c.start+subDelay) && t<=(c.end+subDelay) );
+  const txt=document.getElementById('sub-overlay-text');
+  if(active){
+    if(txt.textContent!==active.text) txt.textContent=active.text;
+    overlay.classList.add('show');
+  } else {
+    overlay.classList.remove('show');
+  }
+}
+vid.addEventListener('timeupdate', updateActiveSubtitleCue);
+
+function hexToRgba(hex,alpha){
+  const h=hex.replace('#','');
+  const r=parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function applySubStyle(){
+  const txt=document.getElementById('sub-overlay-text');
+  txt.style.fontSize=subFontSize+'px';
+  txt.style.color=subTextColor;
+  txt.style.background=hexToRgba(subBgColor,subBgOpacity/100);
+  document.getElementById('sub-fontsize-val').textContent=subFontSize+'px';
+  document.getElementById('sub-opacity-val').textContent=subBgOpacity+'%';
 }
 
 function updateSubtitleUI(){
@@ -1382,8 +1542,8 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
     subtitleCues=cues;
     subDelay=0;
     subtitlesOn=true;
-    document.getElementById('sub-track-el').track.mode='showing';
-    rebuildSubtitleTrack();
+    applySubStyle();
+    updateActiveSubtitleCue();
     document.getElementById('sub-filename').textContent=file.name;
     document.getElementById('sub-remove-btn').style.display='inline-block';
     updateSubtitleUI();
@@ -1397,31 +1557,54 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
 function toggleSubtitles(){
   if(!subtitleCues.length){ toast('Load a subtitle file first'); return; }
   subtitlesOn=!subtitlesOn;
-  document.getElementById('sub-track-el').track.mode=subtitlesOn?'showing':'hidden';
+  updateActiveSubtitleCue();
   updateSubtitleUI();
 }
 
 function adjustSubDelay(delta){
   if(!subtitleCues.length){ toast('Load a subtitle file first'); return; }
   subDelay=Math.round((subDelay+delta)*10)/10; // avoid float drift, keep 1 decimal
-  rebuildSubtitleTrack();
+  updateActiveSubtitleCue();
   updateSubtitleUI();
 }
 
 function resetSubDelay(){
   if(!subtitleCues.length) return;
   subDelay=0;
-  rebuildSubtitleTrack();
+  updateActiveSubtitleCue();
   updateSubtitleUI();
+}
+
+function adjustSubFontSize(delta){
+  subFontSize=Math.max(12,Math.min(64,subFontSize+delta));
+  applySubStyle();
+}
+function setSubTextColor(hex){ subTextColor=hex; applySubStyle(); }
+function setSubBgColor(hex){ subBgColor=hex; applySubStyle(); }
+function setSubBgOpacity(val){ subBgOpacity=+val; applySubStyle(); }
+
+function resetSubStyle(){
+  subFontSize=22; subTextColor='#fdf6ec'; subBgColor='#000000'; subBgOpacity=70;
+  document.getElementById('sub-color-input').value=subTextColor;
+  document.getElementById('sub-bg-input').value=subBgColor;
+  document.getElementById('sub-opacity-input').value=subBgOpacity;
+  applySubStyle();
+  const ov=document.getElementById('sub-overlay');
+  ov.style.left=''; ov.style.top=''; ov.style.bottom='9%'; ov.style.transform='translateX(-50%)';
+  ov.dataset.posSet='0';
+}
+
+function toggleSubReposition(){
+  subReposition=!subReposition;
+  document.getElementById('sub-overlay').classList.toggle('reposition-mode',subReposition);
+  document.getElementById('sub-reposition-switch').classList.toggle('on',subReposition);
 }
 
 function clearSubtitleState(){
   subtitleCues=[];
   subDelay=0;
   subtitlesOn=false;
-  const tt=document.getElementById('sub-track-el').track;
-  Array.from(tt.cues||[]).forEach(c=>tt.removeCue(c));
-  tt.mode='disabled';
+  document.getElementById('sub-overlay').classList.remove('show');
   document.getElementById('sub-filename').textContent='No subtitle loaded';
   document.getElementById('sub-remove-btn').style.display='none';
   updateSubtitleUI();
@@ -1431,6 +1614,98 @@ function removeSubtitle(){
   clearSubtitleState();
   toast('Subtitles removed');
 }
+
+// Drag (1-finger / mouse), pinch-resize (2-finger), and corner-handle resize
+// for the subtitle overlay — active only while "Reposition" is toggled on,
+// so normal video taps/swipes pass straight through the rest of the time.
+(function(){
+  const ov=document.getElementById('sub-overlay');
+  const handle=document.getElementById('sub-resize-handle');
+  const area=()=>document.getElementById('video-area');
+  let mode=null; // 'drag' | 'resize' | 'pinch'
+  let dragOx=0, dragOy=0;
+  let pinchStartDist=0, pinchStartFont=0;
+  let resizeStartY=0, resizeStartFont=0;
+
+  function dist(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+
+  function lockToAbsolutePosition(){
+    if(ov.dataset.posSet==='1') return;
+    const r=ov.getBoundingClientRect();
+    const pr=area().getBoundingClientRect();
+    ov.style.left=(r.left-pr.left)+'px';
+    ov.style.top=(r.top-pr.top)+'px';
+    ov.style.bottom='auto';
+    ov.style.transform='none';
+    ov.dataset.posSet='1';
+  }
+
+  function startDrag(ex,ey){
+    lockToAbsolutePosition();
+    mode='drag';
+    const r=ov.getBoundingClientRect();
+    const pr=area().getBoundingClientRect();
+    dragOx=ex-(r.left-pr.left); dragOy=ey-(r.top-pr.top);
+  }
+  function doDrag(ex,ey){
+    const a=area(); const pr=a.getBoundingClientRect();
+    const x=Math.max(0,Math.min(ex-pr.left-dragOx, a.offsetWidth-ov.offsetWidth));
+    const y=Math.max(0,Math.min(ey-pr.top-dragOy, a.offsetHeight-ov.offsetHeight));
+    ov.style.left=x+'px'; ov.style.top=y+'px';
+  }
+
+  ov.addEventListener('mousedown', e=>{
+    if(!subReposition || e.button!==0 || e.target===handle) return;
+    e.preventDefault(); startDrag(e.clientX,e.clientY);
+  });
+  ov.addEventListener('touchstart', e=>{
+    if(!subReposition) return;
+    if(e.touches.length===2){
+      e.preventDefault();
+      mode='pinch'; pinchStartDist=dist(e.touches); pinchStartFont=subFontSize;
+    } else if(e.touches.length===1 && e.target!==handle){
+      e.preventDefault();
+      startDrag(e.touches[0].clientX,e.touches[0].clientY);
+    }
+  },{passive:false});
+
+  handle.addEventListener('mousedown', e=>{
+    if(!subReposition) return;
+    e.preventDefault(); e.stopPropagation();
+    mode='resize'; resizeStartY=e.clientY; resizeStartFont=subFontSize;
+  });
+  handle.addEventListener('touchstart', e=>{
+    if(!subReposition) return;
+    e.preventDefault(); e.stopPropagation();
+    mode='resize'; resizeStartY=e.touches[0].clientY; resizeStartFont=subFontSize;
+  },{passive:false});
+
+  document.addEventListener('mousemove', e=>{
+    if(mode==='drag') doDrag(e.clientX,e.clientY);
+    else if(mode==='resize'){
+      const d=e.clientY-resizeStartY;
+      subFontSize=Math.max(12,Math.min(64,Math.round(resizeStartFont+d*0.3)));
+      applySubStyle();
+    }
+  });
+  document.addEventListener('touchmove', e=>{
+    if(mode==='drag' && e.touches.length===1){
+      e.preventDefault(); doDrag(e.touches[0].clientX,e.touches[0].clientY);
+    } else if(mode==='pinch' && e.touches.length===2){
+      e.preventDefault();
+      const ratio=pinchStartDist>0 ? dist(e.touches)/pinchStartDist : 1;
+      subFontSize=Math.max(12,Math.min(64,Math.round(pinchStartFont*ratio)));
+      applySubStyle();
+    } else if(mode==='resize' && e.touches.length===1){
+      e.preventDefault();
+      const d=e.touches[0].clientY-resizeStartY;
+      subFontSize=Math.max(12,Math.min(64,Math.round(resizeStartFont+d*0.3)));
+      applySubStyle();
+    }
+  },{passive:false});
+  document.addEventListener('mouseup', ()=>{ mode=null; });
+  document.addEventListener('touchend', ()=>{ mode=null; pinchStartDist=0; });
+})();
 
 // ── VIDEO UI ────────────────────────────────────────────────
 function bindVideoUI(){
@@ -1793,11 +2068,17 @@ async function guestLoadAndStream(file){
   // Show a mini loading indicator
   document.getElementById('wait-ov').classList.add('show');
 
+  file = await prepareVideoFile(file); // converts MKV → MP4 first; passes through untouched otherwise
+  if(!file){
+    document.getElementById('wait-ov').classList.remove('show');
+    return;
+  }
+
   if(vid.srcObject){ vid.srcObject=null; }
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
 
   const url=URL.createObjectURL(file);
-  vid.src=url; vid.volume=0; vid.muted=false; // volume=0 keeps sender silent; muted=false lets captureStream capture audio
+  vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
 
   vid.onerror=()=>{
     document.getElementById('wait-ov').classList.remove('show');
@@ -1910,6 +2191,7 @@ async function doHostWatchGuestRTC(){
     vid.src=''; vid.removeAttribute('src');
     vid.srcObject=e.streams[0];
     vid.muted=false;
+    vid.volume=0.5; // explicit reset — vid is a shared element and could otherwise inherit a stale 0 from an earlier sender session
     vid.play().catch(()=>{ toast('Tap to play'); });
     bindVideoUI();
     document.getElementById('remove-file-btn').style.display='none';
@@ -2354,7 +2636,7 @@ document.getElementById('hud-bri').style.transition='opacity 0.4s';
 updateHUDs();
 
 va.addEventListener('touchstart',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // don't hijack overlay-panel touches
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // don't hijack overlay-panel touches
   const t=e.touches[0];
   swipeStartY=t.clientY; swipeStartX=t.clientX;
   swipeSide=t.clientX<va.offsetWidth/2?'left':'right';
@@ -2362,7 +2644,7 @@ va.addEventListener('touchstart',e=>{
 },{passive:true});
 
 va.addEventListener('touchmove',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // let overlay panels handle their own scroll/touch
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // let overlay panels handle their own scroll/touch
   if(!e.touches.length)return;
   const t=e.touches[0];
   const dy=swipeStartY-t.clientY;
@@ -2388,7 +2670,7 @@ va.addEventListener('touchmove',e=>{
 },{passive:false});
 
 va.addEventListener('touchend',e=>{
-  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu')) return; // don't trigger tap-to-skip on overlay panels
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // don't trigger tap-to-skip on overlay panels
   if(isSwiping){isSwiping=false;return;}
   const t=e.changedTouches[0];
   const isRight=t.clientX>va.offsetWidth/2;
