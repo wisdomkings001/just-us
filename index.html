@@ -1010,13 +1010,18 @@ async function getFFmpeg(){
   if(ffmpegInstance) return ffmpegInstance;
   if(ffmpegLoadingPromise) return ffmpegLoadingPromise;
   ffmpegLoadingPromise=(async()=>{
+    // @ffmpeg/core-st is the SINGLE-THREADED build — deliberately avoids SharedArrayBuffer
+    // so it works on GitHub Pages (and any static host) without special response headers.
+    // The multi-threaded @ffmpeg/core requires Cross-Origin-Opener-Policy +
+    // Cross-Origin-Embedder-Policy headers, which GitHub Pages cannot set.
     const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
     const { toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
     const ffmpeg=new FFmpeg();
-    const baseURL='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    const baseURL='https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/umd'; // ← core-st, not core
     await ffmpeg.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,'text/javascript'),
       wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`,'application/wasm'),
+      // no workerURL — single-threaded build has no worker file
     });
     ffmpegInstance=ffmpeg;
     return ffmpeg;
@@ -1025,34 +1030,63 @@ async function getFFmpeg(){
 }
 
 // Returns the original file untouched if it's not MKV (zero overhead).
-// For MKV files, returns a converted MP4 File, or null on failure (toast already shown).
+// For MKV files, converts to MP4 in-browser via ffmpeg.wasm, or returns null on failure.
 async function prepareVideoFile(file){
   const isMkv = /\.mkv$/i.test(file.name) || file.type==='video/x-matroska';
   if(!isMkv) return file;
 
+  // Warn early for very large files — loading the whole file through browser memory
+  // (read → virtual FS → process → read back) requires roughly 2× the file size in RAM.
+  // Conversion is still attempted so the user can decide; it works fine up to ~1.5 GB.
+  if(file.size > 1.5*1024*1024*1024){
+    toast(`⚠️ Large file (${(file.size/1024/1024/1024).toFixed(1)} GB) — conversion may be slow or run out of memory. Consider converting with HandBrake first for best results.`);
+    await new Promise(r=>setTimeout(r,2500)); // let them read the toast
+  }
+
   const waitMsg=document.getElementById('wait-msg');
   document.getElementById('wait-ov').classList.add('show');
-  if(waitMsg) waitMsg.textContent='Preparing MKV converter…';
+  if(waitMsg) waitMsg.textContent='Loading MKV converter…';
 
   try{
     const { fetchFile } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
     const ffmpeg=await getFFmpeg();
 
     ffmpeg.on('progress', ({progress})=>{
-      if(waitMsg && progress>=0 && progress<=1) waitMsg.textContent=`Converting MKV… ${Math.round(progress*100)}%`;
+      if(waitMsg && progress>=0 && progress<=1)
+        waitMsg.textContent=`Converting MKV… ${Math.round(progress*100)}%`;
     });
 
     if(waitMsg) waitMsg.textContent='Converting MKV…';
     await ffmpeg.writeFile('input.mkv', await fetchFile(file));
-    await ffmpeg.exec(['-i','input.mkv','-c:v','copy','-c:a','aac','-b:a','192k','-movflags','faststart','output.mp4']);
+    // -c:v copy = stream-copy video (instant, lossless); -c:a aac = re-encode audio to
+    // browser-compatible AAC (MKV rips often carry AC3/DTS which browsers won't decode).
+    await ffmpeg.exec([
+      '-i','input.mkv',
+      '-c:v','copy',
+      '-c:a','aac','-b:a','192k',
+      '-movflags','faststart',
+      'output.mp4'
+    ]);
     const data=await ffmpeg.readFile('output.mp4');
     ffmpeg.deleteFile('input.mkv').catch(()=>{});
     ffmpeg.deleteFile('output.mp4').catch(()=>{});
 
     const convertedName=file.name.replace(/\.mkv$/i,'.mp4');
     return new File([data.buffer], convertedName, {type:'video/mp4'});
+
   }catch(err){
-    toast('⚠️ Couldn\'t convert this MKV — check your internet connection, or its video codec may be unsupported.');
+    // Surface the actual error so we know exactly what failed
+    const msg = err && err.message ? err.message : String(err);
+    const isMemory  = /memory|oom|out of memory/i.test(msg);
+    const isNetwork = /fetch|network|load|import/i.test(msg);
+    if(isMemory){
+      toast('⚠️ Ran out of memory converting this MKV. Try a smaller file, or convert with HandBrake first.');
+    } else if(isNetwork){
+      toast('⚠️ Couldn\'t load the MKV converter — check your internet connection and try again.');
+    } else {
+      toast('⚠️ MKV conversion failed: ' + msg.slice(0,120));
+    }
+    console.error('[MKV conversion]', err);
     document.getElementById('wait-ov').classList.remove('show');
     return null;
   }
