@@ -915,6 +915,7 @@ function enterRoom(){
   watchChat();
   watchControl();
   watchCamSignal();
+  watchSubtitleSync();
   startHeartbeat();
   // Show controls + toggle button immediately on entry
   setTimeout(showCtrls, 100);
@@ -991,106 +992,212 @@ function setupHostFlow(){
   watchGuestStream();
 }
 
-// ── MKV SUPPORT ─────────────────────────────────────────────
-// Chrome/Edge cannot open the Matroska (.mkv) container at all, regardless of
-// the codec inside — that's why MKV uploads showed a blank screen with a
-// vague "unsupported format" error rather than playing. We detect MKV files
-// here and remux them into an MP4 container in-browser via ffmpeg.wasm before
-// handing them to the player. Video is stream-copied (instant, lossless, no
-// quality loss); audio is transcoded to AAC since MKV rips commonly carry
-// AC3/DTS audio, which browsers can't decode either way.
-// NOTE: this downloads a ~30MB converter the first time (cached after), and
-// requires an internet connection. If the video codec itself genuinely isn't
-// browser-decodable (rare — e.g. very old DivX/Xvid), conversion will still
-// fail; in that case you'll get a clear message instead of a silent blank screen.
-let ffmpegInstance=null;
-let ffmpegLoadingPromise=null;
+// ── MKV SUPPORT (3-layer cascade) ───────────────────────────
+// Chrome/Edge reject the Matroska (.mkv) container entirely regardless of
+// the codec inside. We try three approaches in order:
+//
+//   Layer 1 — jmuxer (~15 KB, no memory pressure, streams in real-time)
+//   Layer 2 — mp4box.js (~200 KB, remuxes to MP4 in-browser)
+//   Layer 3 — HandBrake popup (guaranteed fallback, works for any file)
+//
+// Non-MKV files pass through instantly with zero overhead.
 
-async function getFFmpeg(){
-  if(ffmpegInstance) return ffmpegInstance;
-  if(ffmpegLoadingPromise) return ffmpegLoadingPromise;
-  ffmpegLoadingPromise=(async()=>{
-    // @ffmpeg/core-st is the SINGLE-THREADED build — deliberately avoids SharedArrayBuffer
-    // so it works on GitHub Pages (and any static host) without special response headers.
-    // The multi-threaded @ffmpeg/core requires Cross-Origin-Opener-Policy +
-    // Cross-Origin-Embedder-Policy headers, which GitHub Pages cannot set.
-    const { FFmpeg } = await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-    const { toBlobURL } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
-    const ffmpeg=new FFmpeg();
-    const baseURL='https://unpkg.com/@ffmpeg/core-st@0.12.6/dist/umd'; // ← core-st, not core
-    await ffmpeg.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`,'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`,'application/wasm'),
-      // no workerURL — single-threaded build has no worker file
-    });
-    ffmpegInstance=ffmpeg;
-    return ffmpeg;
-  })();
-  return ffmpegLoadingPromise;
+// ── Layer 1: jmuxer ──────────────────────────────────────────
+// Reads the MKV chunk-by-chunk and feeds raw video/audio data straight into
+// the browser's built-in decoder via MediaSource Extensions. Never loads the
+// full file into memory. Fastest path for standard H.264+AAC MKV files.
+function tryJmuxer(file){
+  return new Promise((resolve, reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdn.jsdelivr.net/npm/jmuxer@3.0.4/dist/jmuxer.min.js';
+    script.crossOrigin='anonymous';
+    script.onerror=()=>reject(new Error('jmuxer load failed'));
+    script.onload=()=>{
+      try{
+        // JMuxer needs a <video> element to attach MediaSource to.
+        // We temporarily use a detached video element just to get a blob URL,
+        // then detach it so the main vid element loads from that URL normally.
+        const tempVid=document.createElement('video');
+        let resolved=false;
+        const jmuxer=new JMuxer({
+          node: tempVid,
+          mode: 'both',
+          debug: false,
+          onReady: ()=>{
+            // MediaSource is open — feed the file in chunks
+            const CHUNK=512*1024; // 512 KB chunks
+            let offset=0;
+            const reader=new FileReader();
+            function readNext(){
+              if(offset>=file.size){
+                jmuxer.destroy();
+                return;
+              }
+              reader.readAsArrayBuffer(file.slice(offset, offset+CHUNK));
+              offset+=CHUNK;
+            }
+            reader.onload=e=>{
+              try{
+                jmuxer.feed({video:new Uint8Array(e.target.result)});
+                if(!resolved && tempVid.readyState>=1){
+                  resolved=true;
+                  // Build a blob URL from the MediaSource object URL
+                  resolve(tempVid.src);
+                }
+                readNext();
+              }catch(ex){ if(!resolved){ resolved=true; reject(ex); } }
+            };
+            reader.onerror=()=>{ if(!resolved){ resolved=true; reject(new Error('FileReader error')); } };
+            readNext();
+          },
+          onError: (e)=>{ if(!resolved){ resolved=true; reject(new Error('JMuxer error: '+e)); } }
+        });
+        // Timeout — if nothing plays within 12s, fall through to Layer 2
+        setTimeout(()=>{ if(!resolved){ resolved=true; jmuxer.destroy(); reject(new Error('jmuxer timeout')); } }, 12000);
+      }catch(ex){ reject(ex); }
+    };
+    document.head.appendChild(script);
+  });
 }
 
-// Returns the original file untouched if it's not MKV (zero overhead).
-// For MKV files, converts to MP4 in-browser via ffmpeg.wasm, or returns null on failure.
+// ── Layer 2: mp4box.js ───────────────────────────────────────
+// Reads the entire MKV into memory and remuxes it into an MP4 container.
+// Returns a File object (MP4) the player can open normally.
+// Handles more edge cases than jmuxer but requires the full file in RAM.
+function tryMp4box(file){
+  return new Promise((resolve, reject)=>{
+    const script=document.createElement('script');
+    script.src='https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js';
+    script.crossOrigin='anonymous';
+    script.onerror=()=>reject(new Error('mp4box load failed'));
+    script.onload=()=>{
+      try{
+        const mp4boxFile=MP4Box.createFile();
+        const outputBuffers=[];
+        let totalSize=0;
+
+        mp4boxFile.onError=e=>reject(new Error('MP4Box error: '+e));
+        mp4boxFile.onReady=info=>{
+          // Set up output stream for each track
+          info.tracks.forEach(track=>{
+            mp4boxFile.setSegmentOptions(track.id, null, {nbSamples:100});
+          });
+          const initSegs=mp4boxFile.initializeSegmentation();
+          initSegs.forEach(s=>{ outputBuffers.push(s.buffer); totalSize+=s.buffer.byteLength; });
+          mp4boxFile.start();
+        };
+        mp4boxFile.onSegment=(id, user, buffer)=>{
+          outputBuffers.push(buffer);
+          totalSize+=buffer.byteLength;
+        };
+        mp4boxFile.onFlush=()=>{
+          const combined=new Uint8Array(totalSize);
+          let pos=0;
+          outputBuffers.forEach(buf=>{ combined.set(new Uint8Array(buf),pos); pos+=buf.byteLength; });
+          const outFile=new File([combined.buffer], file.name.replace(/\.mkv$/i,'.mp4'), {type:'video/mp4'});
+          resolve(outFile);
+        };
+
+        const reader=new FileReader();
+        reader.onload=e=>{
+          const ab=e.target.result;
+          ab.fileStart=0;
+          mp4boxFile.appendBuffer(ab);
+          mp4boxFile.flush();
+        };
+        reader.onerror=()=>reject(new Error('FileReader error'));
+        reader.readAsArrayBuffer(file);
+      }catch(ex){ reject(ex); }
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// ── Layer 3: HandBrake fallback popup ────────────────────────
+// Shows a clear explanation and a direct HandBrake link so the user
+// can convert once externally and re-upload as MP4.
+function showHandBrakeFallback(reason){
+  const existing=document.getElementById('mkv-fallback-popup');
+  if(existing) existing.remove();
+  const popup=document.createElement('div');
+  popup.id='mkv-fallback-popup';
+  popup.style.cssText=`
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:9999;background:rgba(14,14,28,0.98);border:1px solid rgba(212,149,106,0.4);
+    border-radius:16px;padding:1.6rem 1.8rem;max-width:340px;width:90%;
+    backdrop-filter:blur(16px);text-align:center;font-family:'DM Sans',sans-serif;
+    box-shadow:0 12px 40px rgba(0,0,0,0.8);
+  `;
+  popup.innerHTML=`
+    <div style="font-size:1.8rem;margin-bottom:0.6rem">🎬</div>
+    <div style="font-size:1rem;font-weight:600;color:#f0ebe4;margin-bottom:0.5rem">MKV needs converting</div>
+    <div style="font-size:0.82rem;color:#6b6880;margin-bottom:1.1rem;line-height:1.5">
+      Your browser can't open this MKV directly${reason?'<br><span style="font-size:0.75rem;opacity:0.7">('+reason+')</span>':''}.
+      <br><br>
+      Convert it to MP4 first using <strong style="color:#d4956a">HandBrake</strong> (free) —
+      takes about 1 minute, no quality loss.
+    </div>
+    <a href="https://handbrake.fr" target="_blank" rel="noopener"
+      style="display:inline-block;background:rgba(212,149,106,0.2);border:1px solid rgba(212,149,106,0.4);
+      color:#d4956a;padding:0.55rem 1.2rem;border-radius:8px;font-size:0.85rem;
+      text-decoration:none;margin-bottom:0.8rem">
+      Download HandBrake →
+    </a>
+    <br>
+    <button onclick="document.getElementById('mkv-fallback-popup').remove()"
+      style="background:none;border:none;color:#6b6880;font-size:0.78rem;
+      cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline">
+      Dismiss
+    </button>
+  `;
+  document.body.appendChild(popup);
+}
+
+// ── Entry point ──────────────────────────────────────────────
+// Returns the original file untouched for non-MKV (zero overhead).
+// For MKV: tries Layer 1, then Layer 2, then shows Layer 3 popup.
+// Returns a File/URL for the player, or null if all layers fail.
 async function prepareVideoFile(file){
-  const isMkv = /\.mkv$/i.test(file.name) || file.type==='video/x-matroska';
+  const isMkv=/\.mkv$/i.test(file.name) || file.type==='video/x-matroska';
   if(!isMkv) return file;
 
-  // Warn early for very large files — loading the whole file through browser memory
-  // (read → virtual FS → process → read back) requires roughly 2× the file size in RAM.
-  // Conversion is still attempted so the user can decide; it works fine up to ~1.5 GB.
-  if(file.size > 1.5*1024*1024*1024){
-    toast(`⚠️ Large file (${(file.size/1024/1024/1024).toFixed(1)} GB) — conversion may be slow or run out of memory. Consider converting with HandBrake first for best results.`);
-    await new Promise(r=>setTimeout(r,2500)); // let them read the toast
+  const waitMsg=document.getElementById('wait-msg');
+  const setMsg=t=>{ if(waitMsg) waitMsg.textContent=t; };
+  document.getElementById('wait-ov').classList.add('show');
+
+  // ── Layer 1: jmuxer ─────────────────────────────────────
+  setMsg('Opening MKV…');
+  try{
+    const srcURL=await tryJmuxer(file);
+    if(srcURL){
+      // jmuxer returns a MediaSource object URL — pass it directly to the player
+      // wrapped as a fake File-like object with a .jmuxerURL flag
+      return {isJmuxerURL:true, url:srcURL, name:file.name};
+    }
+  }catch(e1){
+    console.warn('[MKV Layer 1 jmuxer]', e1.message);
   }
 
-  const waitMsg=document.getElementById('wait-msg');
-  document.getElementById('wait-ov').classList.add('show');
-  if(waitMsg) waitMsg.textContent='Loading MKV converter…';
-
+  // ── Layer 2: mp4box.js ───────────────────────────────────
+  setMsg('Remuxing MKV…');
   try{
-    const { fetchFile } = await import('https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js');
-    const ffmpeg=await getFFmpeg();
-
-    ffmpeg.on('progress', ({progress})=>{
-      if(waitMsg && progress>=0 && progress<=1)
-        waitMsg.textContent=`Converting MKV… ${Math.round(progress*100)}%`;
-    });
-
-    if(waitMsg) waitMsg.textContent='Converting MKV…';
-    await ffmpeg.writeFile('input.mkv', await fetchFile(file));
-    // -c:v copy = stream-copy video (instant, lossless); -c:a aac = re-encode audio to
-    // browser-compatible AAC (MKV rips often carry AC3/DTS which browsers won't decode).
-    await ffmpeg.exec([
-      '-i','input.mkv',
-      '-c:v','copy',
-      '-c:a','aac','-b:a','192k',
-      '-movflags','faststart',
-      'output.mp4'
-    ]);
-    const data=await ffmpeg.readFile('output.mp4');
-    ffmpeg.deleteFile('input.mkv').catch(()=>{});
-    ffmpeg.deleteFile('output.mp4').catch(()=>{});
-
-    const convertedName=file.name.replace(/\.mkv$/i,'.mp4');
-    return new File([data.buffer], convertedName, {type:'video/mp4'});
-
-  }catch(err){
-    // Surface the actual error so we know exactly what failed
-    const msg = err && err.message ? err.message : String(err);
-    const isMemory  = /memory|oom|out of memory/i.test(msg);
-    const isNetwork = /fetch|network|load|import/i.test(msg);
-    if(isMemory){
-      toast('⚠️ Ran out of memory converting this MKV. Try a smaller file, or convert with HandBrake first.');
-    } else if(isNetwork){
-      toast('⚠️ Couldn\'t load the MKV converter — check your internet connection and try again.');
-    } else {
-      toast('⚠️ MKV conversion failed: ' + msg.slice(0,120));
-    }
-    console.error('[MKV conversion]', err);
+    const mp4File=await tryMp4box(file);
+    if(mp4File) return mp4File;
+  }catch(e2){
+    console.warn('[MKV Layer 2 mp4box]', e2.message);
+    const reason=e2.message.slice(0,80);
     document.getElementById('wait-ov').classList.remove('show');
+    showHandBrakeFallback(reason);
     return null;
   }
+
+  // ── Layer 3: HandBrake popup (both layers failed) ────────
+  document.getElementById('wait-ov').classList.remove('show');
+  showHandBrakeFallback('');
+  return null;
 }
+
+
 
 async function loadVideoFile(file, needsRTC=false){
   document.getElementById('upload-ov').style.display='none';
@@ -1098,7 +1205,7 @@ async function loadVideoFile(file, needsRTC=false){
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Loading video…';
 
-  file = await prepareVideoFile(file); // converts MKV → MP4 first; passes through untouched otherwise
+  file = await prepareVideoFile(file); // MKV → Layer1/Layer2/Layer3 cascade; non-MKV passes through
   if(!file){
     document.getElementById('wait-ov').classList.remove('show');
     document.getElementById('upload-ov').style.display='flex';
@@ -1111,7 +1218,9 @@ async function loadVideoFile(file, needsRTC=false){
   if(vid.srcObject){ vid.srcObject=null; }
   vid.onerror=null;
 
-  const url=URL.createObjectURL(file);
+  // jmuxer returns a MediaSource object URL directly; mp4box and regular files
+  // return a File object that needs a blob URL created from it.
+  const url = file.isJmuxerURL ? file.url : URL.createObjectURL(file);
   vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
 
   vid.onerror=()=>{
@@ -1582,6 +1691,10 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
     document.getElementById('sub-remove-btn').style.display='inline-block';
     updateSubtitleUI();
     toast('Subtitles loaded ✓');
+    // Sync to partner — send raw text so they parse and display the same cues
+    if(roomRef) roomRef.child('subtitleSync').set({
+      text, delay:0, on:true, sender:myName, ts:Date.now()
+    }).catch(()=>{});
   }catch(err){ toast('Subtitle error: '+err.message); }
   finally{
     if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
@@ -1593,6 +1706,8 @@ function toggleSubtitles(){
   subtitlesOn=!subtitlesOn;
   updateActiveSubtitleCue();
   updateSubtitleUI();
+  // Sync on/off state to partner
+  if(roomRef) roomRef.child('subtitleSync/on').set(subtitlesOn).catch(()=>{});
 }
 
 function adjustSubDelay(delta){
@@ -1600,6 +1715,8 @@ function adjustSubDelay(delta){
   subDelay=Math.round((subDelay+delta)*10)/10; // avoid float drift, keep 1 decimal
   updateActiveSubtitleCue();
   updateSubtitleUI();
+  // Sync delay to partner so captions stay in lock-step
+  if(roomRef) roomRef.child('subtitleSync/delay').set(subDelay).catch(()=>{});
 }
 
 function resetSubDelay(){
@@ -1607,6 +1724,7 @@ function resetSubDelay(){
   subDelay=0;
   updateActiveSubtitleCue();
   updateSubtitleUI();
+  if(roomRef) roomRef.child('subtitleSync/delay').set(0).catch(()=>{});
 }
 
 function adjustSubFontSize(delta){
@@ -1647,6 +1765,10 @@ function clearSubtitleState(){
 function removeSubtitle(){
   clearSubtitleState();
   toast('Subtitles removed');
+  // Tell partner to clear subtitles too
+  if(roomRef) roomRef.child('subtitleSync').set({
+    text:null, on:false, sender:myName, ts:Date.now()
+  }).catch(()=>{});
 }
 
 // Drag (1-finger / mouse), pinch-resize (2-finger), and corner-handle resize
@@ -2102,7 +2224,7 @@ async function guestLoadAndStream(file){
   // Show a mini loading indicator
   document.getElementById('wait-ov').classList.add('show');
 
-  file = await prepareVideoFile(file); // converts MKV → MP4 first; passes through untouched otherwise
+  file = await prepareVideoFile(file); // MKV → Layer1/Layer2/Layer3 cascade; non-MKV passes through
   if(!file){
     document.getElementById('wait-ov').classList.remove('show');
     return;
@@ -2111,7 +2233,7 @@ async function guestLoadAndStream(file){
   if(vid.srcObject){ vid.srcObject=null; }
   if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
 
-  const url=URL.createObjectURL(file);
+  const url = file.isJmuxerURL ? file.url : URL.createObjectURL(file);
   vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
 
   vid.onerror=()=>{
@@ -2583,6 +2705,69 @@ function watchCamSignal(){
     }
   });
 }
+
+// ── SUBTITLE SYNC (Firebase watcher — receiver side) ─────────
+// Watches roomRef/subtitleSync. When the partner loads, adjusts, or removes
+// subtitles, this fires and applies the change locally.
+// Appearance (font size, colours, position) stays personal — only the content,
+// delay, and on/off state are shared.
+function watchSubtitleSync(){
+  if(!roomRef) return;
+  let firstFire=true;
+  roomRef.child('subtitleSync').on('value', s=>{
+    const d=s.val();
+
+    // First fire: ignore stale data left over from a previous session
+    if(firstFire){
+      firstFire=false;
+      if(!d || !d.ts) return;
+      if((Date.now()-d.ts)>60000) return; // older than 60s → stale
+    }
+    if(!d) return;
+
+    // Echo guard — ignore our own writes coming back
+    if(d.sender===myName) return;
+
+    // Partner removed subtitles
+    if(!d.text){
+      clearSubtitleState();
+      toast('Partner removed subtitles');
+      return;
+    }
+
+    // Partner loaded a new subtitle file
+    if(d.text && d.text !== _lastReceivedSubText){
+      _lastReceivedSubText=d.text;
+      const cues=parseSubtitles(d.text);
+      if(!cues.length) return;
+      subtitleCues=cues;
+      subDelay=typeof d.delay==='number' ? d.delay : 0;
+      subtitlesOn=d.on!==false;
+      applySubStyle();
+      updateActiveSubtitleCue();
+      document.getElementById('sub-filename').textContent='Partner\'s subtitles';
+      document.getElementById('sub-remove-btn').style.display='inline-block';
+      updateSubtitleUI();
+      toast('Subtitles synced from partner ✓');
+      return;
+    }
+
+    // Partner adjusted delay only (text unchanged)
+    if(typeof d.delay==='number' && d.delay!==subDelay){
+      subDelay=d.delay;
+      updateActiveSubtitleCue();
+      updateSubtitleUI();
+    }
+
+    // Partner toggled on/off only
+    if(typeof d.on==='boolean' && d.on!==subtitlesOn){
+      subtitlesOn=d.on;
+      updateActiveSubtitleCue();
+      updateSubtitleUI();
+    }
+  });
+}
+let _lastReceivedSubText=''; // tracks last received text to detect new files vs field updates
 
 // ── CAMERA WINDOW: DRAG + RESIZE ─────────────────────────────
 (function(){
