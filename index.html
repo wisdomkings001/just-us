@@ -1,11 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<!-- coi-serviceworker: registers a service worker that adds Cross-Origin-Opener-Policy
-     and Cross-Origin-Embedder-Policy headers. Required to enable SharedArrayBuffer on
-     static hosts (GitHub Pages, Netlify, etc.) which cannot set custom response headers.
-     Page reloads once silently on first visit while the worker installs, then is invisible. -->
-<script src="https://cdn.jsdelivr.net/npm/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>JustUs — Watch Together</title>
@@ -998,92 +993,20 @@ function setupHostFlow(){
 }
 
 // ── MKV SUPPORT ─────────────────────────────────────────────
-// Chrome/Edge reject the Matroska (.mkv) container regardless of what's inside.
-// We convert MKV → MP4 in-browser using ffmpeg.wasm, then hand the result to
-// the player as a normal blob URL.
-//
-// Requirements satisfied:
-//   • coi-serviceworker (in <head>) provides COOP/COEP headers so SharedArrayBuffer
-//     works on GitHub Pages without any server config.
-//   • @ffmpeg/core on jsDelivr serves Access-Control-Allow-Origin: * reliably.
-//   • Video is stream-copied (instant, lossless). Audio is re-encoded to AAC
-//     because MKV rips often carry AC3/DTS which browsers cannot decode.
-//
-// Non-MKV files pass through instantly with zero overhead.
+// Chrome/Edge reject the Matroska (.mkv) container regardless of codec.
+// In-browser conversion isn't feasible on GitHub Pages without breaking
+// the WebRTC streaming (the required headers conflict with captureStream).
+// When an MKV is selected, we show a clear popup directing the user to
+// HandBrake (free, ~60 seconds, lossless). Non-MKV files pass through untouched.
 
-let _ffmpegInstance = null;
-let _ffmpegLoading  = null;
-
-async function getFFmpeg(){
-  if(_ffmpegInstance) return _ffmpegInstance;
-  if(_ffmpegLoading)  return _ffmpegLoading;
-  _ffmpegLoading = (async()=>{
-    const { FFmpeg }    = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
-    const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
-    const base = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
-    const ff = new FFmpeg();
-    await ff.load({
-      coreURL:   await toBlobURL(`${base}/ffmpeg-core.js`,     'text/javascript'),
-      wasmURL:   await toBlobURL(`${base}/ffmpeg-core.wasm`,   'application/wasm'),
-      workerURL: await toBlobURL(`${base}/ffmpeg-core.worker.js`, 'text/javascript'),
-    });
-    _ffmpegInstance = ff;
-    return ff;
-  })();
-  return _ffmpegLoading;
-}
-
-// Returns the original file untouched for non-MKV.
-// For MKV: converts to MP4 in-browser and returns a new File, or null on failure.
-async function prepareVideoFile(file){
+function prepareVideoFile(file){
   const isMkv = /\.mkv$/i.test(file.name) || file.type === 'video/x-matroska';
-  if(!isMkv) return file;
-
-  const waitMsg = document.getElementById('wait-msg');
-  const setMsg  = t => { if(waitMsg) waitMsg.textContent = t; };
-  document.getElementById('wait-ov').classList.add('show');
-  setMsg('Loading MKV converter…');
-
-  try{
-    const { fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
-    const ff = await getFFmpeg();
-
-    ff.on('progress', ({progress})=>{
-      if(progress >= 0 && progress <= 1)
-        setMsg(`Converting MKV… ${Math.round(progress * 100)}%`);
-    });
-
-    setMsg('Converting MKV…');
-    await ff.writeFile('input.mkv', await fetchFile(file));
-    await ff.exec([
-      '-i',    'input.mkv',
-      '-c:v',  'copy',           // stream-copy video — instant, zero quality loss
-      '-c:a',  'aac',            // re-encode audio to AAC (AC3/DTS aren't browser-decodable)
-      '-b:a',  '192k',
-      '-movflags', 'faststart',  // moov atom at front so playback starts immediately
-      'output.mp4'
-    ]);
-    const data = await ff.readFile('output.mp4');
-    ff.deleteFile('input.mkv').catch(()=>{});
-    ff.deleteFile('output.mp4').catch(()=>{});
-
-    return new File(
-      [data.buffer],
-      file.name.replace(/\.mkv$/i, '.mp4'),
-      {type: 'video/mp4'}
-    );
-
-  }catch(err){
-    const msg = (err && err.message) ? err.message : String(err);
-    console.error('[MKV conversion]', err);
-    document.getElementById('wait-ov').classList.remove('show');
-    showHandBrakeFallback(msg.slice(0, 120));
-    return null;
-  }
+  if(!isMkv) return file; // non-MKV: return immediately, no async needed
+  showHandBrakeFallback();
+  return null;
 }
 
-// Shown when conversion fails — gives the user a clear path forward.
-function showHandBrakeFallback(reason){
+function showHandBrakeFallback(){
   const existing = document.getElementById('mkv-fallback-popup');
   if(existing) existing.remove();
   const popup = document.createElement('div');
@@ -1097,13 +1020,12 @@ function showHandBrakeFallback(reason){
   `;
   popup.innerHTML = `
     <div style="font-size:1.8rem;margin-bottom:0.6rem">🎬</div>
-    <div style="font-size:1rem;font-weight:600;color:#f0ebe4;margin-bottom:0.5rem">MKV needs converting</div>
+    <div style="font-size:1rem;font-weight:600;color:#f0ebe4;margin-bottom:0.5rem">MKV isn't supported</div>
     <div style="font-size:0.82rem;color:#6b6880;margin-bottom:1.1rem;line-height:1.5">
-      Your browser can't open this MKV directly
-      ${reason ? '<br><span style="font-size:0.72rem;opacity:0.6">('+reason+')</span>' : ''}.
+      Your browser can't open MKV files directly.
       <br><br>
       Convert it to MP4 first using <strong style="color:#d4956a">HandBrake</strong> (free) —
-      takes about 1 minute, no quality loss.
+      takes about 1 minute and there's no quality loss.
     </div>
     <a href="https://handbrake.fr" target="_blank" rel="noopener"
       style="display:inline-block;background:rgba(212,149,106,0.2);border:1px solid rgba(212,149,106,0.4);
@@ -1122,13 +1044,15 @@ function showHandBrakeFallback(reason){
 
 
 
+
+
 async function loadVideoFile(file, needsRTC=false){
   document.getElementById('upload-ov').style.display='none';
   document.getElementById('remove-file-btn').style.display='flex';
   document.getElementById('wait-ov').classList.add('show');
   document.getElementById('wait-msg').textContent='Loading video…';
 
-  file = await prepareVideoFile(file); // MKV → Layer1/Layer2/Layer3 cascade; non-MKV passes through
+  file = prepareVideoFile(file); // shows HandBrake popup for MKV and returns null; passes non-MKV through
   if(!file){
     document.getElementById('wait-ov').classList.remove('show');
     document.getElementById('upload-ov').style.display='flex';
@@ -2145,7 +2069,7 @@ async function guestLoadAndStream(file){
   // Show a mini loading indicator
   document.getElementById('wait-ov').classList.add('show');
 
-  file = await prepareVideoFile(file); // MKV → Layer1/Layer2/Layer3 cascade; non-MKV passes through
+  file = prepareVideoFile(file); // shows HandBrake popup for MKV and returns null; passes non-MKV through
   if(!file){
     document.getElementById('wait-ov').classList.remove('show');
     return;
