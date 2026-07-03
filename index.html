@@ -1080,7 +1080,7 @@ async function loadVideoFile(file, needsRTC=false){
     // Timeout fallback — if loadeddata never fires in 30s, bail out
     const timeout=setTimeout(()=>{
       document.getElementById('wait-ov').classList.remove('show');
-      toast('⚠️ Video took too long to load. Try a smaller file or MP4 format.');
+      toast(' Video took too long to load. Try a smaller file or MP4 format.');
       resolve();
     }, 30000);
 
