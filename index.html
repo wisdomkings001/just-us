@@ -1175,16 +1175,14 @@ async function doHostRTC(){
       }
       if(!localStream.getTracks().length){ toast('No video tracks found — try playing the video first.'); return; }
 
-      // addTransceiver + sendEncodings sets the bitrate ceiling DURING negotiation
-      // (setParameters() after the fact is unreliable — browsers often reject it
-      // because the encodings array shape doesn't match what was negotiated)
-      localStream.getTracks().forEach(t=>{
-        const tx=pc.addTransceiver(t,{
-          direction:'sendonly',
-          sendEncodings:[{maxBitrate: t.kind==='video' ? 8*1000*1000 : 192*1000}]
-        });
-        // Prefer H.264 (matches most source files, avoids decode→re-encode quality loss)
-        if(t.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+      // addTrack is the universally compatible path for all browsers including mobile.
+      // addTransceiver+sendEncodings was causing blank video on phone↔laptop connections.
+      localStream.getTracks().forEach(t=> pc.addTrack(t, localStream));
+
+      // Optionally prefer H.264 codec — silent no-op if browser doesn't support this API.
+      // Must be called AFTER addTrack and BEFORE createOffer.
+      pc.getTransceivers().forEach(tx=>{
+        if(tx.sender.track?.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
           try{
             const caps=RTCRtpSender.getCapabilities('video').codecs;
             const ordered=[
@@ -1192,12 +1190,13 @@ async function doHostRTC(){
               ...caps.filter(c=>/VP9/i.test(c.mimeType)),
               ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
             ];
-            tx.setCodecPreferences(ordered);
+            if(ordered.length) tx.setCodecPreferences(ordered);
           }catch(_){}
         }
       });
 
-      const offer=await pc.createOffer();
+      // offerToReceiveAudio/Video:false — tells browser this is a send-only stream
+      const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
       await pc.setLocalDescription(offer);
       await roomRef.child('offer').set({sdp:offer.sdp,type:offer.type});
 
@@ -1315,8 +1314,31 @@ function setupPCEvents(){
     if(st==='connected'||st==='completed'){ reconnecting=false; }
   };
   pc.onconnectionstatechange=()=>{
+    if(pc.connectionState==='connected') applyBitrateLimit();
     if(pc.connectionState==='failed') attemptReconnect();
   };
+}
+
+// Applies bitrate ceiling + maintain-resolution degradation preference once the
+// peer connection is live. Uses setParameters() on EXISTING encoding objects
+// (modify-in-place, not replace) which is the only pattern browsers accept.
+function applyBitrateLimit(){
+  if(!pc) return;
+  pc.getSenders().forEach(s=>{
+    if(!s.track) return;
+    const p=s.getParameters();
+    if(!p.encodings||!p.encodings.length) return;
+    const isVideo=s.track.kind==='video';
+    p.encodings.forEach(enc=>{
+      if(isVideo){
+        enc.maxBitrate=8*1000*1000;                    // 8 Mbps ceiling
+        enc.degradationPreference='maintain-resolution'; // drop frames, never blur
+      } else {
+        enc.maxBitrate=192*1000;                       // 192 kbps audio
+      }
+    });
+    s.setParameters(p).catch(()=>{});
+  });
 }
 
 // ── PLAYLIST ────────────────────────────────────────────────
@@ -2000,7 +2022,7 @@ function setupGuestMovieRequest(){
       document.getElementById('guest-req-btn').textContent='🎬 Pick Movie';
       document.getElementById('guest-req-btn').disabled=false;
     } else if(d.status==='denied'){
-      toast('Request denied by host 😅');
+      toast('Request denied by host');
       document.getElementById('guest-req-btn').disabled=false;
       document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
       guestCanPickMovie=false;
@@ -2123,13 +2145,12 @@ async function doGuestStreamRTC(){
     if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid,30); }
     if(!localStream.getTracks().length){ toast('No video tracks found.'); return; }
 
-    // addTransceiver + sendEncodings sets bitrate reliably during negotiation
-    localStream.getTracks().forEach(t=>{
-      const tx=pc.addTransceiver(t,{
-        direction:'sendonly',
-        sendEncodings:[{maxBitrate: t.kind==='video' ? 8*1000*1000 : 192*1000}]
-      });
-      if(t.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+    // addTrack — universally compatible with all browsers including mobile.
+    localStream.getTracks().forEach(t=> pc.addTrack(t, localStream));
+
+    // Optionally prefer H.264 — silent no-op if unsupported.
+    pc.getTransceivers().forEach(tx=>{
+      if(tx.sender.track?.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
         try{
           const caps=RTCRtpSender.getCapabilities('video').codecs;
           const ordered=[
@@ -2137,12 +2158,12 @@ async function doGuestStreamRTC(){
             ...caps.filter(c=>/VP9/i.test(c.mimeType)),
             ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
           ];
-          tx.setCodecPreferences(ordered);
+          if(ordered.length) tx.setCodecPreferences(ordered);
         }catch(_){}
       }
     });
 
-    const offer=await pc.createOffer();
+    const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
     await pc.setLocalDescription(offer);
     await roomRef.child('guestOffer').set({sdp:offer.sdp,type:offer.type});
 
@@ -2537,7 +2558,7 @@ function watchCamSignal(){
 
     // Partner declined my request
     if(d.status==='declined' && d.requester===myName){
-      toast('Partner declined the call 🙅');
+      toast('Partner declined the call');
       document.getElementById('live-feed-btn').textContent='📷';
       camRole=null;
     }
