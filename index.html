@@ -663,6 +663,11 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
           <button class="sub-switch" id="sub-switch-btn" onclick="toggleSubtitles()" title="Toggle subtitles"></button>
         </div>
 
+        <div class="sub-row sub-toggle-row">
+          <span>Show partner subtitle</span>
+          <button class="sub-switch" id="sub-partner-switch" onclick="toggleShowPartnerSub()" title="Show your partner's subtitle"></button>
+        </div>
+
         <div class="sub-row sub-delay-row">
           <span>Sync delay</span>
           <div class="sub-delay-ctrls">
@@ -1080,7 +1085,7 @@ async function loadVideoFile(file, needsRTC=false){
     // Timeout fallback — if loadeddata never fires in 30s, bail out
     const timeout=setTimeout(()=>{
       document.getElementById('wait-ov').classList.remove('show');
-      toast(' Video took too long to load. Try a smaller file or MP4 format.');
+      toast('⚠️ Video took too long to load. Try a smaller file or MP4 format.');
       resolve();
     }, 30000);
 
@@ -1431,14 +1436,23 @@ document.addEventListener('click', e=>{
 });
 
 // ── SUBTITLES ───────────────────────────────────────────────
-let subtitleCues  = [];      // original parsed cues, never mutated: [{start,end,text}]
-let subDelay      = 0;       // seconds; positive = subtitles appear later
+let subtitleCues  = [];      // ACTIVE cues (own or partner's, depending on _showPartnerSub)
+let subDelay      = 0;       // ACTIVE delay — own delay, or partner's delay when showing partner
 let subtitlesOn   = false;
 let subFontSize   = 22;      // px
 let subTextColor  = '#fdf6ec';
 let subBgColor    = '#000000';
 let subBgOpacity  = 70;      // percent
 let subReposition = false;   // drag/pinch mode toggle
+// Own subtitle state — preserved when switching to partner's subtitle
+let _ownSubCues   = [];
+let _ownSubDelay  = 0;
+let _ownSubOn     = false;
+let _ownSubFile   = '';
+// Partner subtitle state — stored when received, only displayed if _showPartnerSub is true
+let _partnerSub   = null;    // {cues, delay, text, hostTime}
+let _showPartnerSub = false; // toggle: show partner's subtitle instead of own
+let _subTimeOffset  = 0;     // calibration: hostTime − guestVidTime, compensates stream lag
 
 function toggleSubtitlePanel(){
   document.getElementById('sub-panel').classList.toggle('open');
@@ -1477,7 +1491,10 @@ function updateActiveSubtitleCue(){
     overlay.classList.remove('show');
     return;
   }
-  const t=vid.currentTime;
+  // When showing partner's subtitle, the guest's vid.currentTime starts from 0
+  // when the stream is received (captureStream timestamps are relative to capture
+  // start, not the source video's position). _subTimeOffset bridges that gap.
+  const t = vid.currentTime + (_showPartnerSub ? _subTimeOffset : 0);
   const active=subtitleCues.find(c=> t>=(c.start+subDelay) && t<=(c.end+subDelay) );
   const txt=document.getElementById('sub-overlay-text');
   if(active){
@@ -1504,10 +1521,14 @@ function applySubStyle(){
 }
 
 function updateSubtitleUI(){
+  // When showing partner subtitle, the delay buttons adjust _subTimeOffset (local calibration)
+  // When showing own subtitle, they adjust subDelay (synced to partner)
+  const displayVal = _showPartnerSub ? _subTimeOffset : subDelay;
   document.getElementById('sub-delay-val').textContent=
-    (subDelay>=0?'+':'')+subDelay.toFixed(1)+'s';
+    (displayVal>=0?'+':'')+displayVal.toFixed(1)+'s';
   document.getElementById('sub-switch-btn').classList.toggle('on',subtitlesOn);
   document.getElementById('sub-toggle-btn').style.opacity=subtitlesOn?'1':'0.85';
+  document.getElementById('sub-partner-switch').classList.toggle('on',_showPartnerSub);
 }
 
 // Opening the native file picker backgrounds the tab momentarily; on some
@@ -1549,18 +1570,27 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
     const text=await file.text();
     const cues=parseSubtitles(text);
     if(!cues.length){ toast('Could not read that subtitle file ⚠️'); return; }
-    subtitleCues=cues;
-    subDelay=0;
-    subtitlesOn=true;
-    applySubStyle();
-    updateActiveSubtitleCue();
-    document.getElementById('sub-filename').textContent=file.name;
-    document.getElementById('sub-remove-btn').style.display='inline-block';
+    // Always save to own-subtitle state regardless of current display mode
+    _ownSubCues  = cues;
+    _ownSubDelay = 0;
+    _ownSubOn    = true;
+    _ownSubFile  = file.name;
+    if(!_showPartnerSub){
+      // Not showing partner's subtitle — apply to active display
+      subtitleCues=cues;
+      subDelay=0;
+      subtitlesOn=true;
+      applySubStyle();
+      updateActiveSubtitleCue();
+      document.getElementById('sub-filename').textContent=file.name;
+      document.getElementById('sub-remove-btn').style.display='inline-block';
+    }
     updateSubtitleUI();
     toast('Subtitles loaded ✓');
-    // Sync to partner — send raw text so they parse and display the same cues
+    // Sync to partner — include hostTime so guest can calibrate their stream offset
     if(roomRef) roomRef.child('subtitleSync').set({
-      text, delay:0, on:true, sender:myName, ts:Date.now()
+      text, delay:0, on:true, sender:myName, ts:Date.now(),
+      hostTime: vid.currentTime   // guest uses this to compute _subTimeOffset
     }).catch(()=>{});
   }catch(err){ toast('Subtitle error: '+err.message); }
   finally{
@@ -1579,19 +1609,32 @@ function toggleSubtitles(){
 
 function adjustSubDelay(delta){
   if(!subtitleCues.length){ toast('Load a subtitle file first'); return; }
-  subDelay=Math.round((subDelay+delta)*10)/10; // avoid float drift, keep 1 decimal
-  updateActiveSubtitleCue();
-  updateSubtitleUI();
-  // Sync delay to partner so captions stay in lock-step
-  if(roomRef) roomRef.child('subtitleSync/delay').set(subDelay).catch(()=>{});
+  if(_showPartnerSub){
+    // Adjust local stream calibration only — not synced to Firebase
+    _subTimeOffset=Math.round((_subTimeOffset+delta)*10)/10;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+  } else {
+    subDelay=Math.round((subDelay+delta)*10)/10;
+    _ownSubDelay=subDelay; // keep own state in sync
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+    if(roomRef) roomRef.child('subtitleSync/delay').set(subDelay).catch(()=>{});
+  }
 }
 
 function resetSubDelay(){
   if(!subtitleCues.length) return;
-  subDelay=0;
-  updateActiveSubtitleCue();
-  updateSubtitleUI();
-  if(roomRef) roomRef.child('subtitleSync/delay').set(0).catch(()=>{});
+  if(_showPartnerSub){
+    _subTimeOffset=0;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+  } else {
+    subDelay=0; _ownSubDelay=0;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+    if(roomRef) roomRef.child('subtitleSync/delay').set(0).catch(()=>{});
+  }
 }
 
 function adjustSubFontSize(delta){
@@ -1620,9 +1663,9 @@ function toggleSubReposition(){
 }
 
 function clearSubtitleState(){
-  subtitleCues=[];
-  subDelay=0;
-  subtitlesOn=false;
+  subtitleCues=[]; subDelay=0; subtitlesOn=false;
+  _ownSubCues=[]; _ownSubDelay=0; _ownSubOn=false; _ownSubFile='';
+  _partnerSub=null; _showPartnerSub=false; _subTimeOffset=0;
   document.getElementById('sub-overlay').classList.remove('show');
   document.getElementById('sub-filename').textContent='No subtitle loaded';
   document.getElementById('sub-remove-btn').style.display='none';
@@ -1632,10 +1675,48 @@ function clearSubtitleState(){
 function removeSubtitle(){
   clearSubtitleState();
   toast('Subtitles removed');
-  // Tell partner to clear subtitles too
   if(roomRef) roomRef.child('subtitleSync').set({
     text:null, on:false, sender:myName, ts:Date.now()
   }).catch(()=>{});
+}
+
+// Toggles between showing partner's subtitle and own subtitle.
+// Full control (delay, style, position) always belongs to each person individually.
+// When showing partner subtitle, delay buttons adjust local stream calibration only.
+function toggleShowPartnerSub(){
+  _showPartnerSub=!_showPartnerSub;
+  if(_showPartnerSub){
+    // Save current own state before switching
+    _ownSubCues  = subtitleCues.slice();
+    _ownSubDelay = subDelay;
+    _ownSubOn    = subtitlesOn;
+    _ownSubFile  = document.getElementById('sub-filename').textContent;
+    if(_partnerSub && _partnerSub.cues.length){
+      // Apply stored partner subtitle
+      subtitleCues = _partnerSub.cues;
+      subDelay     = _partnerSub.delay || 0;
+      subtitlesOn  = true;
+      document.getElementById('sub-filename').textContent = 'Partner\'s subtitle';
+      document.getElementById('sub-remove-btn').style.display='none'; // can't remove partner's
+      applySubStyle();
+      updateActiveSubtitleCue();
+      toast('Showing partner\'s subtitle');
+    } else {
+      toast('No partner subtitle available yet');
+      _showPartnerSub=false; // revert if nothing to show
+    }
+  } else {
+    // Restore own subtitle state
+    subtitleCues = _ownSubCues;
+    subDelay     = _ownSubDelay;
+    subtitlesOn  = _ownSubOn;
+    _subTimeOffset = 0;
+    document.getElementById('sub-filename').textContent = _ownSubFile||'No subtitle loaded';
+    document.getElementById('sub-remove-btn').style.display = _ownSubCues.length?'inline-block':'none';
+    updateActiveSubtitleCue();
+    toast('Showing your own subtitle');
+  }
+  updateSubtitleUI();
 }
 
 // Drag (1-finger / mouse), pinch-resize (2-finger), and corner-handle resize
@@ -2022,7 +2103,7 @@ function setupGuestMovieRequest(){
       document.getElementById('guest-req-btn').textContent='🎬 Pick Movie';
       document.getElementById('guest-req-btn').disabled=false;
     } else if(d.status==='denied'){
-      toast('Request denied by host');
+      toast('Request denied by host 😅');
       document.getElementById('guest-req-btn').disabled=false;
       document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
       guestCanPickMovie=false;
@@ -2558,7 +2639,7 @@ function watchCamSignal(){
 
     // Partner declined my request
     if(d.status==='declined' && d.requester===myName){
-      toast('Partner declined the call');
+      toast('Partner declined the call 🙅');
       document.getElementById('live-feed-btn').textContent='📷';
       camRole=null;
     }
@@ -2583,11 +2664,11 @@ function watchSubtitleSync(){
   roomRef.child('subtitleSync').on('value', s=>{
     const d=s.val();
 
-    // First fire: ignore stale data left over from a previous session
+    // First fire: ignore stale data from a previous session
     if(firstFire){
       firstFire=false;
       if(!d || !d.ts) return;
-      if((Date.now()-d.ts)>60000) return; // older than 60s → stale
+      if((Date.now()-d.ts)>60000) return;
     }
     if(!d) return;
 
@@ -2596,44 +2677,74 @@ function watchSubtitleSync(){
 
     // Partner removed subtitles
     if(!d.text){
-      clearSubtitleState();
-      toast('Partner removed subtitles');
+      _partnerSub=null;
+      _lastReceivedSubText='';
+      if(_showPartnerSub){
+        // Revert to own subtitle
+        _showPartnerSub=false;
+        subtitleCues=_ownSubCues; subDelay=_ownSubDelay; subtitlesOn=_ownSubOn;
+        document.getElementById('sub-filename').textContent=_ownSubFile||'No subtitle loaded';
+        document.getElementById('sub-remove-btn').style.display=_ownSubCues.length?'inline-block':'none';
+        updateActiveSubtitleCue();
+        updateSubtitleUI();
+        toast('Partner removed their subtitle');
+      }
       return;
     }
 
     // Partner loaded a new subtitle file
-    if(d.text && d.text !== _lastReceivedSubText){
+    if(d.text && d.text!==_lastReceivedSubText){
       _lastReceivedSubText=d.text;
       const cues=parseSubtitles(d.text);
       if(!cues.length) return;
-      subtitleCues=cues;
-      subDelay=typeof d.delay==='number' ? d.delay : 0;
-      subtitlesOn=d.on!==false;
-      applySubStyle();
-      updateActiveSubtitleCue();
-      document.getElementById('sub-filename').textContent='Partner\'s subtitles';
-      document.getElementById('sub-remove-btn').style.display='inline-block';
-      updateSubtitleUI();
-      toast('Subtitles synced from partner ✓');
+
+      // Compute time offset: partner sent their vid.currentTime in hostTime.
+      // Guest's vid.currentTime is relative to stream start, so we bridge the gap.
+      // Firebase latency (~ts delta) is added for better accuracy.
+      const latency = d.ts ? Math.min((Date.now()-d.ts)/1000, 5) : 0;
+      const hostTime = (d.hostTime||0) + latency;
+      const computedOffset = hostTime - (vid.currentTime||0);
+
+      // Store partner subtitle data
+      _partnerSub = {cues, delay: typeof d.delay==='number'?d.delay:0, text:d.text, offset:computedOffset};
+
+      if(_showPartnerSub){
+        // Already in partner mode — apply immediately
+        _subTimeOffset = computedOffset;
+        subtitleCues   = cues;
+        subDelay       = _partnerSub.delay;
+        subtitlesOn    = d.on!==false;
+        applySubStyle();
+        updateActiveSubtitleCue();
+        document.getElementById('sub-filename').textContent='Partner\'s subtitle';
+        document.getElementById('sub-remove-btn').style.display='none';
+        updateSubtitleUI();
+      } else {
+        // Not in partner mode — just notify so they can toggle if they want
+        toast('Partner loaded a subtitle — tap "Show partner subtitle" to see it');
+      }
       return;
     }
 
-    // Partner adjusted delay only (text unchanged)
-    if(typeof d.delay==='number' && d.delay!==subDelay){
-      subDelay=d.delay;
-      updateActiveSubtitleCue();
-      updateSubtitleUI();
+    // Partner adjusted delay only
+    if(typeof d.delay==='number'){
+      if(_partnerSub) _partnerSub.delay=d.delay;
+      if(_showPartnerSub){
+        subDelay=d.delay;
+        updateActiveSubtitleCue();
+        updateSubtitleUI();
+      }
     }
 
-    // Partner toggled on/off only
-    if(typeof d.on==='boolean' && d.on!==subtitlesOn){
+    // Partner toggled on/off
+    if(typeof d.on==='boolean' && _showPartnerSub){
       subtitlesOn=d.on;
       updateActiveSubtitleCue();
       updateSubtitleUI();
     }
   });
 }
-let _lastReceivedSubText=''; // tracks last received text to detect new files vs field updates
+let _lastReceivedSubText='';
 
 // ── CAMERA WINDOW: DRAG + RESIZE ─────────────────────────────
 (function(){
