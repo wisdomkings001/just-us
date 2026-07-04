@@ -667,6 +667,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
           <span>Show partner subtitle</span>
           <button class="sub-switch" id="sub-partner-switch" onclick="toggleShowPartnerSub()" title="Show your partner's subtitle"></button>
         </div>
+        <button class="sub-reset-btn" id="sub-download-btn" onclick="downloadPartnerSubtitle()" style="display:none;color:var(--gold);text-decoration:none">⬇ Download partner's subtitle</button>
 
         <div class="sub-row sub-delay-row">
           <span>Sync delay</span>
@@ -1453,6 +1454,7 @@ let _ownSubFile   = '';
 let _partnerSub   = null;    // {cues, delay, text, hostTime}
 let _showPartnerSub = false; // toggle: show partner's subtitle instead of own
 let _subTimeOffset  = 0;     // calibration: hostTime − guestVidTime, compensates stream lag
+let _guestVideoOffset = 0;   // tracks host movie time vs guest stream time; updated from watchControl
 
 function toggleSubtitlePanel(){
   document.getElementById('sub-panel').classList.toggle('open');
@@ -1491,10 +1493,11 @@ function updateActiveSubtitleCue(){
     overlay.classList.remove('show');
     return;
   }
-  // When showing partner's subtitle, the guest's vid.currentTime starts from 0
-  // when the stream is received (captureStream timestamps are relative to capture
-  // start, not the source video's position). _subTimeOffset bridges that gap.
-  const t = vid.currentTime + (_showPartnerSub ? _subTimeOffset : 0);
+  // Both own and partner subtitle lookup need the real movie position, not stream elapsed time.
+  // _guestVideoOffset: bridges host movie time vs guest's stream currentTime (updated from watchControl).
+  // _subTimeOffset: finer calibration from subtitle sync timestamp (partner subtitle only).
+  // For host: both offsets are 0 since vid.currentTime IS the movie time.
+  const t = vid.currentTime + (_showPartnerSub ? _subTimeOffset : _guestVideoOffset);
   const active=subtitleCues.find(c=> t>=(c.start+subDelay) && t<=(c.end+subDelay) );
   const txt=document.getElementById('sub-overlay-text');
   if(active){
@@ -1665,7 +1668,7 @@ function toggleSubReposition(){
 function clearSubtitleState(){
   subtitleCues=[]; subDelay=0; subtitlesOn=false;
   _ownSubCues=[]; _ownSubDelay=0; _ownSubOn=false; _ownSubFile='';
-  _partnerSub=null; _showPartnerSub=false; _subTimeOffset=0;
+  _partnerSub=null; _showPartnerSub=false; _subTimeOffset=0; _guestVideoOffset=0;
   document.getElementById('sub-overlay').classList.remove('show');
   document.getElementById('sub-filename').textContent='No subtitle loaded';
   document.getElementById('sub-remove-btn').style.display='none';
@@ -1680,7 +1683,31 @@ function removeSubtitle(){
   }).catch(()=>{});
 }
 
-// Toggles between showing partner's subtitle and own subtitle.
+// Downloads the partner's subtitle file as a .srt file to the user's device.
+function downloadPartnerSubtitle(){
+  if(!_partnerSub || !_partnerSub.text){ toast('No partner subtitle available to download'); return; }
+  // Download the file
+  const blob=new Blob([_partnerSub.text],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='partner-subtitle.srt';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  // Also load it as own subtitle automatically
+  const cues=parseSubtitles(_partnerSub.text);
+  if(cues.length){
+    _ownSubCues=cues; _ownSubDelay=0; _ownSubOn=true; _ownSubFile='partner-subtitle.srt';
+    if(!_showPartnerSub){
+      subtitleCues=cues; subDelay=0; subtitlesOn=true;
+      applySubStyle(); updateActiveSubtitleCue();
+      document.getElementById('sub-filename').textContent='partner-subtitle.srt';
+      document.getElementById('sub-remove-btn').style.display='inline-block';
+    }
+    updateSubtitleUI();
+  }
+  toast('Subtitle downloaded and loaded ✓');
+}
 // Full control (delay, style, position) always belongs to each person individually.
 // When showing partner subtitle, delay buttons adjust local stream calibration only.
 function toggleShowPartnerSub(){
@@ -1919,6 +1946,12 @@ function watchControl(){
     // GUEST: receive host state updates
     if(role==='guest' && d.by==='host'){
       syncing=true;
+      // Keep _guestVideoOffset calibrated: host's reported movie time minus guest's
+      // stream currentTime. Used by own-subtitle lookup to match actual movie position.
+      if(typeof d.time==='number' && isFinite(d.time)){
+        const hostTimeNow = d.time + (Date.now()-d.ts)/1000;
+        _guestVideoOffset = hostTimeNow - vid.currentTime;
+      }
       if(d.action==='play'){
         if(vid.srcObject) vid.play().catch(()=>{});
         else { vid.currentTime=d.time+(Date.now()-d.ts)/1000; vid.play().catch(()=>{}); }
@@ -2679,6 +2712,7 @@ function watchSubtitleSync(){
     if(!d.text){
       _partnerSub=null;
       _lastReceivedSubText='';
+      document.getElementById('sub-download-btn').style.display='none';
       if(_showPartnerSub){
         // Revert to own subtitle
         _showPartnerSub=false;
@@ -2707,6 +2741,7 @@ function watchSubtitleSync(){
 
       // Store partner subtitle data
       _partnerSub = {cues, delay: typeof d.delay==='number'?d.delay:0, text:d.text, offset:computedOffset};
+      document.getElementById('sub-download-btn').style.display='inline-block';
 
       if(_showPartnerSub){
         // Already in partner mode — apply immediately
