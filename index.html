@@ -532,7 +532,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text); f
     </div>
 
     <!-- Video -->
-    <video id="vid" playsinline></video>
+    <video id="vid" playsinline muted></video>
 
     <!-- Upload overlay (host) -->
     <div id="upload-ov">
@@ -823,6 +823,8 @@ const ICE = {
 };
 
 // ── STATE ────────────────────────────────────────────────────
+const sessionId = Math.random().toString(36).substr(2,9); // unique per page load — used for echo guards
+let _lastReceivedSubText=''; // declared here (before watchSubtitleSync) to avoid temporal dead zone
 let role=null, roomId=null, myName=null, roomRef=null;
 let pc=null, localStream=null;
 let mediaRec=null, audioChunks=[], isRec=false, recStart=0, recTimerInt=null;
@@ -1280,9 +1282,11 @@ async function doGuestRTC(){
   pc.ontrack=e=>{
     if(vid.srcObject===e.streams[0])return;
     vid.srcObject=e.streams[0];
-    vid.muted=false;
-    vid.volume=0.5; // explicit reset — vid is a shared element and could otherwise inherit a stale 0 from an earlier sender session
-    vid.play().catch(()=>{ toast('Tap to unmute and play'); });
+    vid.volume=0.5;
+    vid.muted=true; // start muted — mobile autoplay policy requires this
+    vid.play().then(()=>{ vid.muted=false; })
+      .catch(()=>{ toast('Tap anywhere to start playback');
+        vid.addEventListener('click',()=>{ vid.muted=false; vid.play().catch(()=>{}); },{once:true}); });
     bindVideoUI();
   };
   pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guest').push(e.candidate.toJSON()); };
@@ -1618,7 +1622,7 @@ document.getElementById('sub-file-input').addEventListener('change', async e=>{
     toast('Subtitles loaded ✓');
     // Sync to partner — include hostTime so guest can calibrate their stream offset
     if(roomRef) roomRef.child('subtitleSync').set({
-      text, delay:0, on:true, sender:myName, ts:Date.now(),
+      text, delay:0, on:true, sender:myName, sid:sessionId, ts:Date.now(),
       hostTime: vid.currentTime   // guest uses this to compute _subTimeOffset
     }).catch(()=>{});
   }catch(err){ toast('Subtitle error: '+err.message); }
@@ -1633,7 +1637,7 @@ function toggleSubtitles(){
   updateActiveSubtitleCue();
   updateSubtitleUI();
   // Sync on/off state to partner
-  if(roomRef) roomRef.child('subtitleSync/on').set(subtitlesOn).catch(()=>{});
+  if(roomRef) roomRef.child('subtitleSync').update({on:subtitlesOn, sid:sessionId, ts:Date.now()}).catch(()=>{});
 }
 
 function adjustSubDelay(delta){
@@ -1648,7 +1652,7 @@ function adjustSubDelay(delta){
     _ownSubDelay=subDelay; // keep own state in sync
     updateActiveSubtitleCue();
     updateSubtitleUI();
-    if(roomRef) roomRef.child('subtitleSync/delay').set(subDelay).catch(()=>{});
+    if(roomRef) roomRef.child('subtitleSync').update({delay:subDelay, sid:sessionId, ts:Date.now()}).catch(()=>{});
   }
 }
 
@@ -1662,7 +1666,7 @@ function resetSubDelay(){
     subDelay=0; _ownSubDelay=0;
     updateActiveSubtitleCue();
     updateSubtitleUI();
-    if(roomRef) roomRef.child('subtitleSync/delay').set(0).catch(()=>{});
+    if(roomRef) roomRef.child('subtitleSync').update({delay:0, sid:sessionId, ts:Date.now()}).catch(()=>{});
   }
 }
 
@@ -2356,9 +2360,11 @@ async function doHostWatchGuestRTC(){
     if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
     vid.src=''; vid.removeAttribute('src');
     vid.srcObject=e.streams[0];
-    vid.muted=false;
-    vid.volume=0.5; // explicit reset — vid is a shared element and could otherwise inherit a stale 0 from an earlier sender session
-    vid.play().catch(()=>{ toast('Tap to play'); });
+    vid.volume=0.5;
+    vid.muted=true; // start muted — mobile autoplay policy requires this
+    vid.play().then(()=>{ vid.muted=false; })
+      .catch(()=>{ toast('Tap anywhere to start playback');
+        vid.addEventListener('click',()=>{ vid.muted=false; vid.play().catch(()=>{}); },{once:true}); });
     bindVideoUI();
     document.getElementById('remove-file-btn').style.display='none';
   };
@@ -2623,6 +2629,14 @@ async function startCamAcceptor(){
   camRole='acceptor';
   _detachCamListeners();
 
+  // Clear stale ICE candidates from any previous cam session before starting new one
+  if(roomRef){
+    await Promise.all([
+      roomRef.child('camSignal/cands_req').remove().catch(()=>{}),
+      roomRef.child('camSignal/cands_acc').remove().catch(()=>{}),
+    ]);
+  }
+
   localCamStream=await getLocalCamera();
   if(!localCamStream){
     if(roomRef) roomRef.child('camSignal').update({status:'declined'});
@@ -2688,15 +2702,17 @@ function watchCamSignal(){
     }
     if(!d) return;
 
-    // Partner is requesting a live call with ME
-    if(d.status==='requesting' && d.requester!==myName){
+    // Partner is requesting a live call with ME (ignore if already in a call)
+    if(d.status==='requesting' && d.requester!==myName && camRole===null){
       document.getElementById('cam-req-msg').textContent=
         `${d.requester} wants to start a live call 📷`;
       camReqPop.classList.add('show');
     }
 
     // B accepted — NOW A creates the offer
+    // Set camRole BEFORE the async call to prevent double-fire if Firebase re-triggers
     if(d.status==='accepted' && d.requester===myName && camRole===null){
+      camRole='requester';
       startCamRequester();
     }
 
@@ -2735,8 +2751,8 @@ function watchSubtitleSync(){
     }
     if(!d) return;
 
-    // Echo guard — ignore our own writes coming back
-    if(d.sender===myName) return;
+    // Echo guard — ignore our own writes coming back (use sessionId, not name, to be robust against same-name users)
+    if(d.sid && d.sid===sessionId) return;
 
     // Partner removed subtitles
     if(!d.text){
@@ -2772,6 +2788,11 @@ function watchSubtitleSync(){
 
       if(_showPartnerSub){
         // Already in partner mode — apply immediately
+        // Compute stream latency offset: difference between host movie time when subtitle
+        // was loaded vs the estimated current host time we track from control events
+        const computedOffset = (typeof d.hostTime === 'number' && _lastKnownHostTimeAt > 0)
+          ? (_lastKnownHostTime - d.hostTime)
+          : 0;
         _subTimeOffset = computedOffset;
         subtitleCues   = cues;
         subDelay       = _partnerSub.delay;
@@ -2806,7 +2827,7 @@ function watchSubtitleSync(){
     }
   });
 }
-let _lastReceivedSubText='';
+// (_lastReceivedSubText is declared at the top of the state block to avoid temporal dead zone)
 
 // ── CAMERA WINDOW: DRAG + RESIZE ─────────────────────────────
 (function(){
