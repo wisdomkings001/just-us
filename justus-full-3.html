@@ -1,0 +1,4249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>JustUs — Watch Together</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg:#07070f; --surface:#0d0d1c; --surface2:#141428; --border:rgba(255,255,255,0.07);
+  --gold:#d4956a; --gold-soft:rgba(212,149,106,0.1); --rose:#c96b7a;
+  --text:#f0ebe4; --muted:#6b6880; --online:#4ade80; --offline:#3d3d5c;
+}
+
+html, body { width:100%; height:100%; background:var(--bg); color:var(--text); font-family:'DM Sans',sans-serif; overflow:hidden; }
+
+/* ── SCREENS ── */
+.screen { position:fixed; inset:0; display:flex; flex-direction:column; opacity:0; pointer-events:none; transition:opacity 0.65s ease; }
+.screen.active { opacity:1; pointer-events:all; }
+
+/* ── INTRO ── */
+#s-intro {
+  align-items:center; justify-content:center;
+  background:radial-gradient(ellipse at center,#0f0920 0%,var(--bg) 70%); z-index:50;
+}
+.intro-logo { text-align:center; display:flex; flex-direction:column; align-items:center; gap:1.2rem; }
+.logo-row { display:flex; align-items:baseline; gap:0.05em; }
+.logo-just { font-family:'Playfair Display',serif; font-size:clamp(3.5rem,13vw,6.5rem); font-weight:400; color:var(--text); opacity:0; transform:translateY(24px); animation:riseIn 1s cubic-bezier(0.22,1,0.36,1) 0.3s forwards; }
+.logo-us   { font-family:'Playfair Display',serif; font-size:clamp(3.5rem,13vw,6.5rem); font-weight:700; font-style:italic; color:var(--gold); opacity:0; transform:translateY(24px); animation:riseIn 1s cubic-bezier(0.22,1,0.36,1) 0.7s forwards; }
+.logo-dot  { width:8px; height:8px; border-radius:50%; background:var(--rose); margin-left:6px; margin-bottom:10px; flex-shrink:0; opacity:0; animation:popIn 0.5s ease 1.4s forwards; }
+.intro-bar { width:60px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); opacity:0; animation:riseIn 0.9s ease 1.6s forwards; }
+.intro-tag { font-size:0.72rem; letter-spacing:0.35em; text-transform:uppercase; color:var(--muted); opacity:0; animation:riseIn 0.9s ease 1.2s forwards; }
+
+/* ── IDENTITY / HOME BASE ── */
+#s-identity, #s-homebase {
+  align-items:center; justify-content:center;
+  background:var(--bg);
+  background-image:radial-gradient(ellipse at 25% 35%,rgba(212,149,106,0.05) 0%,transparent 55%),radial-gradient(ellipse at 75% 65%,rgba(201,107,122,0.04) 0%,transparent 55%);
+}
+.home-wrap { width:100%; max-width:400px; padding:2rem; display:flex; flex-direction:column; gap:2rem; }
+.home-brand { text-align:center; }
+.home-brand h1 { font-family:'Playfair Display',serif; font-size:2rem; font-weight:400; }
+.home-brand h1 em { font-style:italic; font-weight:700; color:var(--gold); }
+.home-brand p { color:var(--muted); font-size:0.82rem; margin-top:0.4rem; letter-spacing:0.06em; }
+
+.wb-change:hover { color:var(--text); }
+
+.tabs { display:flex; border-bottom:1px solid var(--border); }
+.tab-btn { flex:1; padding:0.75rem; background:none; border:none; color:var(--muted); font-family:'DM Sans',sans-serif; font-size:0.88rem; cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color 0.2s,border-color 0.2s; }
+.tab-btn.on { color:var(--gold); border-bottom-color:var(--gold); }
+.tab-pane { display:none; flex-direction:column; gap:1rem; margin-top:1.5rem; }
+.tab-pane.on { display:flex; }
+.field { display:flex; flex-direction:column; gap:0.45rem; }
+.field label { font-size:0.72rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); }
+.field input { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:0.85rem 1rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.95rem; outline:none; transition:border-color 0.2s; }
+.field input:focus { border-color:rgba(212,149,106,0.45); }
+.field input::placeholder { color:var(--muted); }
+.btn-primary { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.9rem; font-family:'DM Sans',sans-serif; font-size:0.95rem; font-weight:600; cursor:pointer; letter-spacing:0.04em; transition:opacity 0.2s,transform 0.15s; }
+.btn-primary:hover { opacity:0.87; }
+.btn-primary:active { transform:scale(0.98); }
+
+/* ── ROOM ── */
+#s-room { flex-direction:row; }
+#video-area { flex:1; position:relative; background:#000; display:flex; align-items:center; justify-content:center; overflow:hidden; min-width:0; }
+#vid { width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+
+/* top bar */
+#room-bar {
+  position:absolute; top:0; left:0; right:0; z-index:10;
+  padding:1rem 1.2rem;
+  background:linear-gradient(to bottom,rgba(0,0,0,0.75) 0%,transparent 100%);
+  display:flex; align-items:center; justify-content:space-between;
+  opacity:0; transition:opacity 0.3s;
+}
+#video-area.ctrls #room-bar { opacity:1; }
+#video-area.ctrls #vid-controls { opacity:1; }.room-brand { font-family:'Playfair Display',serif; font-size:1rem; }
+.room-brand em { font-style:italic; font-weight:700; color:var(--gold); }
+.room-right { display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap; justify-content:flex-end; }
+.users-bar { display:flex; align-items:center; gap:0.5rem; }
+.u-pill { display:flex; align-items:center; gap:0.35rem; background:rgba(255,255,255,0.08); padding:0.28rem 0.65rem; border-radius:20px; font-size:0.75rem; backdrop-filter:blur(6px); }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--offline); transition:background 0.4s; }
+.dot.on { background:var(--online); }
+/* remove-file button */
+#remove-file-btn { display:none; font-size:0.72rem; color:var(--rose); background:rgba(201,107,122,0.15); padding:0.3rem 0.75rem; border-radius:20px; cursor:pointer; border:1px solid rgba(201,107,122,0.3); backdrop-filter:blur(6px); transition:background 0.2s; }
+#remove-file-btn:hover { background:rgba(201,107,122,0.28); }
+
+/* video controls */
+#vid-controls {
+  position:absolute; bottom:0; left:0; right:0; z-index:10;
+  padding:2rem 1.2rem 1.2rem;
+  background:linear-gradient(to top,rgba(0,0,0,0.85) 0%,transparent 100%);
+  display:flex; flex-direction:column; gap:0.75rem;
+  opacity:0; transition:opacity 0.3s;
+}
+#video-area.ctrls #vid-controls { opacity:1; }
+.prog-wrap { position:relative; height:4px; background:rgba(255,255,255,0.2); border-radius:2px; cursor:pointer; }
+.prog-fill { height:100%; background:var(--gold); border-radius:2px; pointer-events:none; width:0%; transition:width 0.1s linear; }
+.prog-thumb { position:absolute; top:50%; left:0%; transform:translate(-50%,-50%); width:13px; height:13px; border-radius:50%; background:var(--gold); pointer-events:none; opacity:0; transition:opacity 0.2s; }
+.prog-wrap:hover .prog-thumb { opacity:1; }
+.ctrl-row { display:flex; align-items:center; gap:0.6rem; }
+.c-btn { background:none; border:none; color:var(--text); font-size:1.15rem; cursor:pointer; padding:0.25rem; opacity:0.85; transition:opacity 0.2s,transform 0.15s; line-height:1; display:flex; align-items:center; justify-content:center; position:relative; }
+.c-btn:hover { opacity:1; transform:scale(1.12); }
+.c-btn.lg { font-size:1.55rem; }
+.c-btn .cbadge { position:absolute; top:-4px; right:-4px; width:15px; height:15px; border-radius:50%; background:var(--rose); font-size:0.55rem; display:none; align-items:center; justify-content:center; color:#fff; }
+.c-btn .cbadge.show { display:flex; }
+.time-txt { font-size:0.8rem; color:rgba(255,255,255,0.65); flex:1; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+/* Larger tap target for progress bar on mobile */
+.prog-wrap::before {
+  content:''; position:absolute; top:-10px; bottom:-10px; left:0; right:0;
+}
+#upload-ov { position:absolute; inset:0; z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1.5rem; background:#000; text-align:center; padding:2rem; }
+#upload-ov h2 { font-family:'Playfair Display',serif; font-size:1.8rem; font-weight:400; }
+#upload-ov p { color:var(--muted); font-size:0.88rem; max-width:260px; line-height:1.6; }
+.drop-zone { border:1px dashed rgba(212,149,106,0.4); border-radius:12px; padding:2.5rem 3rem; cursor:pointer; transition:border-color 0.2s,background 0.2s; }
+.drop-zone:hover { border-color:var(--gold); background:var(--gold-soft); }
+.drop-icon { font-size:2.8rem; margin-bottom:0.75rem; }
+.drop-zone span { color:var(--gold); }
+
+/* waiting overlay */
+#wait-ov { position:absolute; inset:0; z-index:5; display:none; flex-direction:column; align-items:center; justify-content:center; gap:1rem; background:#000; }
+#wait-ov.show { display:flex; }
+.spinner { width:38px; height:38px; border-radius:50%; border:2px solid rgba(212,149,106,0.2); border-top-color:var(--gold); animation:spin 1s linear infinite; }
+#wait-ov p { color:var(--muted); font-size:0.88rem; }
+
+/* gesture indicators */
+.gest-hint { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.6); color:#fff; font-size:1.1rem; font-weight:600; border-radius:12px; padding:0.6rem 1.2rem; pointer-events:none; opacity:0; transition:opacity 0.25s; z-index:20; backdrop-filter:blur(4px); }
+#gest-left  { left:8%; }
+#gest-right { right:8%; }
+.gest-hint.show { opacity:1; }
+
+/* brightness/volume overlay indicator */
+.hud-bar { position:absolute; top:50%; transform:translateY(-50%); width:4px; height:120px; background:rgba(255,255,255,0.15); border-radius:4px; z-index:20; pointer-events:none; overflow:hidden; }
+#hud-vol  { left:18px; }
+#hud-bri  { right:18px; }
+.hud-fill { position:absolute; bottom:0; left:0; right:0; background:var(--gold); border-radius:4px; transition:height 0.1s; }
+#hud-vol-lbl, #hud-bri-lbl { position:absolute; font-size:0.7rem; color:rgba(255,255,255,0.7); white-space:nowrap; transform:translateX(-50%); display:none; }
+#hud-vol-lbl  { top:-22px; left:2px; }
+#hud-bri-lbl  { top:-22px; left:2px; }
+
+/* PLAYLIST PANEL */
+#playlist-panel {
+  position:absolute; bottom:0; left:0; right:0; z-index:25;
+  background:var(--surface); border-top:1px solid var(--border);
+  max-height:0; overflow:hidden; transition:max-height 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+#playlist-panel.open { max-height:55vh; overflow-y:auto; }
+.pl-hdr { padding:0.9rem 1.2rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; background:var(--surface); z-index:1; }
+.pl-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
+.pl-hdr-right { display:flex; gap:0.7rem; align-items:center; }
+.pl-add-btn { background:var(--gold-soft); border:1px solid rgba(212,149,106,0.3); color:var(--gold); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
+.pl-add-btn:hover { background:rgba(212,149,106,0.2); }
+.pl-clear-btn { background:rgba(201,107,122,0.12); border:1px solid rgba(201,107,122,0.25); color:var(--rose); padding:0.3rem 0.8rem; border-radius:20px; font-size:0.75rem; cursor:pointer; transition:background 0.2s; }
+.pl-clear-btn:hover { background:rgba(201,107,122,0.25); }
+.close-pl { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
+#pl-list { padding:0.5rem 0; }
+.pl-item { display:flex; align-items:center; gap:0.75rem; padding:0.7rem 1.2rem; cursor:pointer; transition:background 0.15s; }
+.pl-item:hover { background:rgba(255,255,255,0.04); }
+.pl-item.playing { background:var(--gold-soft); }
+.pl-num { width:22px; text-align:center; font-size:0.75rem; color:var(--muted); flex-shrink:0; }
+.pl-item.playing .pl-num { color:var(--gold); }
+.pl-info { flex:1; min-width:0; }
+.pl-name { font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pl-item.playing .pl-name { color:var(--gold); }
+.pl-dur { font-size:0.72rem; color:var(--muted); margin-top:0.1rem; }
+.pl-remove { background:none; border:none; color:var(--muted); font-size:0.85rem; cursor:pointer; padding:0.2rem 0.4rem; border-radius:4px; opacity:0; transition:opacity 0.15s,color 0.15s; }
+.pl-item:hover .pl-remove { opacity:1; }
+.pl-remove:hover { color:var(--rose); }
+.pl-empty { padding:2rem; text-align:center; color:var(--muted); font-size:0.85rem; }
+
+/* SETTINGS MENU */
+#settings-menu {
+  position:absolute; bottom:64px; right:12px; z-index:40;
+  background:rgba(14,14,28,0.97); border:1px solid var(--border);
+  border-radius:12px; padding:0.4rem; display:none; flex-direction:column; gap:0.15rem;
+  backdrop-filter:blur(12px); min-width:170px;
+  box-shadow:0 8px 28px rgba(0,0,0,0.6);
+}
+#settings-menu.open { display:flex; }
+.settings-item {
+  display:flex; align-items:center; gap:0.65rem;
+  background:none; border:none; color:var(--text);
+  font-size:0.85rem; padding:0.6rem 0.7rem; border-radius:8px;
+  cursor:pointer; text-align:left; transition:background 0.15s;
+  font-family:'DM Sans',sans-serif;
+}
+.settings-item:hover { background:rgba(255,255,255,0.07); }
+.settings-item .si-icon { font-size:1.05rem; width:22px; text-align:center; flex-shrink:0; }
+
+/* SUBTITLE PANEL */
+#sub-panel {
+  position:absolute; bottom:0; left:0; right:0; z-index:25;
+  background:var(--surface); border-top:1px solid var(--border);
+  max-height:0; overflow:hidden; transition:max-height 0.4s cubic-bezier(0.4,0,0.2,1);
+}
+#sub-panel.open { max-height:55vh; overflow-y:auto; }
+.sub-body { padding:1rem 1.2rem 1.3rem; display:flex; flex-direction:column; gap:0.9rem; }
+.sub-row { display:flex; align-items:center; justify-content:space-between; gap:0.6rem; flex-wrap:wrap; }
+.sub-filename { font-size:0.78rem; color:var(--muted); margin-top:-0.4rem; }
+.sub-toggle-row span, .sub-delay-row span { font-size:0.85rem; color:var(--text); }
+.sub-switch { width:38px; height:20px; border-radius:10px; background:var(--surface2); border:1px solid var(--border); position:relative; cursor:pointer; transition:background 0.2s; flex-shrink:0; }
+.sub-switch::after { content:''; position:absolute; top:1px; left:1px; width:16px; height:16px; border-radius:50%; background:var(--muted); transition:transform 0.2s,background 0.2s; }
+.sub-switch.on { background:var(--gold-soft); border-color:rgba(212,149,106,0.4); }
+.sub-switch.on::after { transform:translateX(18px); background:var(--gold); }
+.sub-delay-ctrls { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; }
+.sub-delay-btn { background:var(--surface2); border:1px solid var(--border); color:var(--text); padding:0.3rem 0.65rem; border-radius:20px; font-size:0.72rem; cursor:pointer; transition:background 0.2s; }
+.sub-delay-btn:hover { background:rgba(212,149,106,0.18); }
+.sub-delay-val { font-size:0.78rem; color:var(--gold); min-width:48px; text-align:center; font-variant-numeric:tabular-nums; }
+.sub-reset-btn { align-self:flex-start; background:none; border:none; color:var(--muted); font-size:0.75rem; text-decoration:underline; cursor:pointer; padding:0; }
+.sub-reset-btn:hover { color:var(--rose); }
+.sub-divider { height:1px; background:var(--border); margin:0.1rem 0; }
+.sub-style-row span:first-child { font-size:0.85rem; color:var(--text); }
+.sub-color-swatch { width:34px; height:28px; border:1px solid var(--border); border-radius:7px; background:none; cursor:pointer; padding:0; }
+.sub-color-swatch::-webkit-color-swatch-wrapper { padding:2px; }
+.sub-color-swatch::-webkit-color-swatch { border:none; border-radius:5px; }
+#sub-opacity-input { width:90px; accent-color:var(--gold); }
+
+/* CUSTOM SUBTITLE OVERLAY — replaces native captions so it can be dragged & pinch-resized */
+#sub-overlay {
+  position:absolute; left:50%; bottom:9%; transform:translateX(-50%);
+  max-width:86%; z-index:20;
+  pointer-events:none; /* default: taps pass straight through to the video */
+  display:none;
+}
+#sub-overlay.show { display:block; }
+#sub-overlay.reposition-mode {
+  pointer-events:auto; cursor:grab; touch-action:none;
+  outline:2px dashed rgba(212,149,106,0.65); outline-offset:5px; border-radius:8px;
+}
+#sub-overlay.reposition-mode:active { cursor:grabbing; }
+#sub-overlay-text {
+  display:inline-block; padding:0.25em 0.55em; border-radius:6px;
+  font-family:'DM Sans',sans-serif; font-weight:500;
+  white-space:pre-wrap; text-align:center; line-height:1.3;
+}
+#sub-resize-handle {
+  display:none; position:absolute; bottom:-7px; right:-7px;
+  width:20px; height:20px; border-radius:50%;
+  background:var(--gold); border:2px solid var(--surface);
+  cursor:se-resize; touch-action:none;
+}
+#sub-overlay.reposition-mode #sub-resize-handle { display:block; }
+
+/* CHAT PANEL */
+#chat-panel {
+  position:absolute; right:0; top:0; bottom:0; z-index:20;
+  width:300px; flex-shrink:0;
+  background:var(--surface); border-left:1px solid var(--border);
+  display:flex; flex-direction:column;
+  transform:translateX(100%);
+  transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
+}
+#chat-panel.open { transform:translateX(0); }
+.chat-hdr { padding:1rem 1.1rem; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-shrink:0; }
+.chat-hdr h3 { font-family:'Playfair Display',serif; font-size:0.95rem; font-weight:400; font-style:italic; }
+.close-c { background:none; border:none; color:var(--muted); font-size:1.1rem; cursor:pointer; }
+#chat-msgs { flex:1; overflow-y:auto; padding:1rem; display:flex; flex-direction:column; gap:0.75rem; scrollbar-width:thin; scrollbar-color:var(--surface2) transparent; }
+#chat-msgs::-webkit-scrollbar { width:3px; }
+#chat-msgs::-webkit-scrollbar-thumb { background:var(--surface2); border-radius:2px; }
+.msg { display:flex; flex-direction:column; gap:0.2rem; max-width:90%; }
+.msg.me { align-self:flex-end; align-items:flex-end; }
+.msg.them { align-self:flex-start; }
+.msg-name { font-size:0.65rem; color:var(--muted); }
+.msg-bub { padding:0.55rem 0.85rem; border-radius:12px; font-size:0.86rem; line-height:1.5; word-break:break-word; }
+.msg.me   .msg-bub { background:var(--gold); color:#180d00; border-bottom-right-radius:3px; }
+.msg.them .msg-bub { background:var(--surface2); color:var(--text); border-bottom-left-radius:3px; }
+.msg-time { font-size:0.62rem; color:var(--muted); }
+
+/* voice bubble */
+.msg-voice-bub { display:flex; align-items:center; gap:0.55rem; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.5rem 0.8rem; min-width:160px; max-width:220px; }
+.msg.me .msg-voice-bub { background:rgba(212,149,106,0.18); border-color:rgba(212,149,106,0.3); }
+.v-play-btn { background:none; border:none; color:var(--gold); font-size:1rem; cursor:pointer; width:24px; height:24px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.msg.me .v-play-btn { color:#180d00; }
+.v-waveform { flex:1; height:24px; position:relative; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; }
+.msg.me .v-waveform { background:rgba(0,0,0,0.1); }
+.v-wave-fill { position:absolute; left:0; top:0; bottom:0; background:rgba(212,149,106,0.45); transition:width 0.1s linear; width:0%; border-radius:4px; }
+.msg.me .v-wave-fill { background:rgba(0,0,0,0.2); }
+.v-dur { font-size:0.72rem; color:var(--muted); white-space:nowrap; flex-shrink:0; }
+.msg.me .v-dur { color:rgba(24,13,0,0.65); }
+
+.chat-bottom { padding:0.75rem 0.85rem; border-top:1px solid var(--border); display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
+#chat-in { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:20px; padding:0.6rem 0.9rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.85rem; outline:none; transition:border-color 0.2s; }
+#chat-in:focus { border-color:rgba(212,149,106,0.35); }
+#chat-in::placeholder { color:var(--muted); }
+.i-btn { width:34px; height:34px; border-radius:50%; border:none; background:var(--surface2); color:var(--muted); font-size:0.95rem; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.2s,color 0.2s; }
+.i-btn:hover { background:var(--gold-soft); color:var(--gold); }
+.i-btn.rec { background:rgba(201,107,122,0.2); color:var(--rose); animation:pulse 1s ease infinite; }
+.i-btn.send-btn { background:var(--gold); color:#180d00; }
+.i-btn.send-btn:hover { opacity:0.85; }
+#mic-label { font-size:0.7rem; color:var(--rose); min-width:30px; font-variant-numeric:tabular-nums; display:none; }
+#mic-label.show { display:block; }
+
+/* MESSAGE POPUP (chat closed) */
+#msg-popup {
+  position:fixed; right:1rem; top:5rem; z-index:200;
+  background:rgba(14,14,28,0.95); border:1px solid var(--border);
+  border-radius:12px; padding:0.75rem 1rem; max-width:240px;
+  backdrop-filter:blur(10px); pointer-events:none;
+  opacity:0; transform:translateX(20px);
+  transition:opacity 0.3s,transform 0.3s;
+}
+#msg-popup.show { opacity:1; transform:translateX(0); }
+.popup-sender { font-size:0.7rem; color:var(--gold); margin-bottom:0.2rem; }
+.popup-body { font-size:0.84rem; word-break:break-word; }
+
+/* TOAST */
+#toast { position:fixed; bottom:1.8rem; left:50%; transform:translateX(-50%) translateY(14px); background:rgba(20,20,40,0.95); border:1px solid var(--border); color:var(--text); padding:0.6rem 1.1rem; border-radius:8px; font-size:0.82rem; opacity:0; transition:opacity 0.3s,transform 0.3s; z-index:300; backdrop-filter:blur(8px); pointer-events:none; white-space:nowrap; }
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* GUEST MOVIE REQUEST */
+#guest-req-btn {
+  display:none; font-size:0.72rem; color:var(--gold);
+  background:rgba(212,149,106,0.15); padding:0.3rem 0.75rem;
+  border-radius:20px; cursor:pointer; border:1px solid rgba(212,149,106,0.35);
+  backdrop-filter:blur(6px); transition:background 0.2s;
+}
+#guest-req-btn:hover { background:rgba(212,149,106,0.28); }
+#guest-req-btn:disabled { opacity:0.5; cursor:default; }
+
+/* Host approval popup */
+#approve-popup {
+  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
+  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
+  border-radius:14px; padding:1rem 1.2rem; z-index:400;
+  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
+  backdrop-filter:blur(12px); text-align:center; min-width:240px;
+}
+#approve-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
+.app-title { font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:0.4rem; }
+.app-msg { font-size:0.88rem; margin-bottom:0.8rem; }
+.app-btns { display:flex; gap:0.5rem; justify-content:center; }
+.app-yes { background:var(--gold); color:#180d00; border:none; border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; font-weight:600; cursor:pointer; }
+.app-no  { background:rgba(201,107,122,0.2); color:var(--rose); border:1px solid rgba(201,107,122,0.3); border-radius:8px; padding:0.45rem 1.1rem; font-size:0.82rem; cursor:pointer; }
+
+/* Guest file input (hidden, triggered by button) */
+#guest-file-input { display:none; }
+
+/* ANIMATIONS */
+@keyframes riseIn { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+@keyframes popIn  { from{opacity:0;transform:scale(0.2)} to{opacity:1;transform:scale(1)} }
+@keyframes spin   { to{transform:rotate(360deg)} }
+@keyframes pulse  { 0%,100%{box-shadow:0 0 0 0 rgba(201,107,122,0.5)} 50%{box-shadow:0 0 0 6px rgba(201,107,122,0)} }
+@keyframes gestPop { 0%{opacity:0;transform:translateY(-50%) scale(0.8)} 20%{opacity:1;transform:translateY(-50%) scale(1)} 70%{opacity:1} 100%{opacity:0} }
+.gest-anim { animation:gestPop 0.8s ease forwards; }
+
+/* ── CAMERA CALL WINDOW ── */
+#cam-window {
+  position:fixed; top:10px; left:10px;
+  width:210px; height:165px; z-index:500;
+  background:#080814; border-radius:12px;
+  overflow:hidden; display:none;
+  border:1.5px solid rgba(212,149,106,0.5);
+  box-shadow:0 6px 32px rgba(0,0,0,0.85);
+  user-select:none; touch-action:none;
+}
+#cam-window.show { display:block; }
+
+/* Remote video fills the window */
+#cam-remote {
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  object-fit:cover; display:block;
+  background:#080814;
+}
+/* Self preview — small inset PiP, mirrored */
+#cam-self-wrap {
+  position:absolute; bottom:38px; right:6px;
+  width:52px; height:40px; z-index:32;
+  border-radius:7px; overflow:hidden;
+  border:1px solid rgba(255,255,255,0.22);
+  background:#000; transition:opacity 0.2s;
+}
+#cam-self {
+  width:100%; height:100%;
+  object-fit:cover; display:block;
+  transform:scaleX(-1); /* mirror own camera */
+}
+/* Drag title bar */
+#cam-titlebar {
+  position:absolute; top:0; left:0; right:0;
+  height:28px; z-index:33; cursor:grab;
+  background:linear-gradient(to bottom,rgba(0,0,0,0.78),transparent);
+  display:flex; align-items:center;
+  justify-content:space-between; padding:0 5px;
+}
+#cam-titlebar:active { cursor:grabbing; }
+.cam-lbl { font-size:0.58rem; color:rgba(255,255,255,0.82); pointer-events:none; letter-spacing:0.04em; }
+.cam-tb-btns { display:flex; gap:3px; align-items:center; }
+.cam-tb-btn {
+  width:17px; height:17px; border-radius:50%;
+  background:rgba(0,0,0,0.5); border:none;
+  color:#fff; font-size:0.58rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background 0.2s; flex-shrink:0;
+}
+.cam-tb-btn:hover { background:rgba(201,107,122,0.75); }
+/* Bottom controls toolbar */
+#cam-toolbar {
+  position:absolute; bottom:0; left:0; right:0;
+  height:34px; z-index:33;
+  background:linear-gradient(to top,rgba(0,0,0,0.85),transparent);
+  display:flex; align-items:center;
+  justify-content:center; gap:8px;
+}
+.cam-ctrl-btn {
+  width:24px; height:24px; border-radius:50%;
+  background:rgba(255,255,255,0.16); border:none;
+  color:#fff; font-size:0.72rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background 0.2s;
+}
+.cam-ctrl-btn:hover { background:rgba(255,255,255,0.3); }
+.cam-ctrl-btn.off { background:rgba(201,107,122,0.4); }
+.cam-ctrl-btn.hang { background:rgba(201,107,122,0.3); }
+.cam-ctrl-btn.hang:hover { background:rgba(201,107,122,0.8); }
+/* Resize handle — bottom-right corner */
+#cam-resize-handle {
+  position:absolute; bottom:0; right:0;
+  width:14px; height:14px; z-index:34;
+  cursor:se-resize;
+  background:linear-gradient(135deg,transparent 50%,rgba(212,149,106,0.45) 50%);
+}
+/* Connecting overlay */
+#cam-connecting {
+  position:absolute; inset:0; z-index:35;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:7px;
+  background:rgba(5,5,18,0.88);
+}
+#cam-connecting.hide { display:none; }
+#cam-connecting span { font-size:0.68rem; color:var(--muted); }
+/* Minimized pill state */
+#cam-window.minimized {
+  height:30px !important;
+  border-radius:15px;
+}
+#cam-window.minimized #cam-remote,
+#cam-window.minimized #cam-self-wrap,
+#cam-window.minimized #cam-toolbar,
+#cam-window.minimized #cam-resize-handle,
+#cam-window.minimized #cam-connecting { display:none !important; }
+#cam-window.minimized #cam-titlebar {
+  height:30px; background:rgba(5,5,18,0.9); cursor:pointer;
+}
+
+/* CAMERA REQUEST POPUP */
+#cam-req-popup {
+  position:fixed; bottom:5rem; left:50%; transform:translateX(-50%) translateY(10px);
+  background:rgba(14,14,28,0.97); border:1px solid rgba(212,149,106,0.4);
+  border-radius:14px; padding:1rem 1.2rem; z-index:400;
+  opacity:0; pointer-events:none; transition:opacity 0.3s,transform 0.3s;
+  backdrop-filter:blur(12px); text-align:center; min-width:240px;
+}
+#cam-req-popup.show { opacity:1; pointer-events:all; transform:translateX(-50%) translateY(0); }
+/* ══════════════════════════════════════════════════════════
+   CATEGORY PICKER + GAMES SUB-PICKER
+   ══════════════════════════════════════════════════════════ */
+#s-category, #s-games { background:var(--bg); background-image:radial-gradient(ellipse at 25% 20%,rgba(212,149,106,0.06) 0%,transparent 55%),radial-gradient(ellipse at 75% 80%,rgba(201,107,122,0.05) 0%,transparent 55%); }
+.cat-topbar {
+  padding:1rem 1.2rem; display:flex; align-items:center; justify-content:space-between;
+  flex-shrink:0; border-bottom:1px solid var(--border);
+}
+.back-btn {
+  background:rgba(255,255,255,0.06); border:1px solid var(--border); color:var(--text);
+  font-family:'DM Sans',sans-serif; font-size:0.8rem; padding:0.45rem 0.9rem;
+  border-radius:20px; cursor:pointer; transition:background 0.2s;
+}
+.back-btn:hover { background:rgba(255,255,255,0.12); }
+.back-btn-sm { position:absolute; left:1.2rem; top:1rem; z-index:11; padding:0.35rem 0.65rem; font-size:0.9rem; }
+.cat-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem 1.5rem; overflow-y:auto; }
+.cat-heading { font-family:'Playfair Display',serif; font-size:1.9rem; font-weight:400; margin-bottom:2rem; text-align:center; }
+.cat-heading em { font-style:italic; font-weight:700; color:var(--gold); }
+.cat-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; width:100%; max-width:460px; }
+.cat-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:16px;
+  padding:1.5rem 1rem; display:flex; flex-direction:column; align-items:center; gap:0.4rem;
+  cursor:pointer; transition:transform 0.15s,border-color 0.2s,background 0.2s; text-align:center;
+}
+.cat-card:hover { border-color:rgba(212,149,106,0.4); background:var(--surface2); transform:translateY(-2px); }
+.cat-card:active { transform:scale(0.97); }
+.cat-icon { font-size:2rem; }
+.cat-lbl { font-family:'Playfair Display',serif; font-size:1rem; font-weight:600; }
+.cat-sub { font-size:0.72rem; color:var(--muted); }
+
+/* ══════════════════════════════════════════════════════════
+   SHARED GAME SCREEN LAYOUT
+   ══════════════════════════════════════════════════════════ */
+.game-screen { background:var(--bg); }
+.game-body { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:1.5rem; overflow-y:auto; gap:1.5rem; }
+.game-progress { font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); }
+.game-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:18px;
+  padding:2rem 1.6rem; max-width:440px; width:100%; text-align:center;
+}
+.game-q { font-family:'Playfair Display',serif; font-size:1.35rem; font-weight:400; line-height:1.4; margin-bottom:1.6rem; }
+.game-opts { display:flex; flex-direction:column; gap:0.7rem; }
+.game-opt-btn {
+  background:var(--surface2); border:1px solid var(--border); color:var(--text);
+  padding:0.85rem 1.1rem; border-radius:10px; font-family:'DM Sans',sans-serif;
+  font-size:0.92rem; cursor:pointer; transition:border-color 0.2s,background 0.2s; text-align:left;
+}
+.game-opt-btn:hover { border-color:rgba(212,149,106,0.4); }
+.game-opt-btn.picked { border-color:var(--gold); background:rgba(212,149,106,0.12); }
+.game-opt-btn.partner-picked::after { content:' 💛 partner'; font-size:0.7rem; color:var(--gold); }
+.game-status { font-size:0.8rem; color:var(--muted); margin-top:0.5rem; min-height:1.2em; }
+.game-nav { display:flex; gap:0.8rem; margin-top:0.5rem; }
+.game-nav-btn {
+  background:var(--gold); color:#180d00; border:none; border-radius:8px;
+  padding:0.7rem 1.4rem; font-size:0.88rem; font-weight:600; cursor:pointer;
+}
+.game-nav-btn:disabled { opacity:0.35; cursor:default; }
+.game-nav-btn.ghost { background:rgba(255,255,255,0.08); color:var(--text); }
+
+/* Would You Rather / Never Have I Ever — vertical choice split */
+.wyr-split { display:flex; flex-direction:column; gap:0.9rem; width:100%; max-width:440px; }
+.wyr-opt {
+  background:var(--surface); border:2px solid var(--border); border-radius:16px;
+  padding:1.4rem 1.2rem; cursor:pointer; text-align:center; font-family:'Playfair Display',serif;
+  font-size:1.05rem; transition:border-color 0.2s,background 0.2s; position:relative;
+}
+.wyr-opt:hover { border-color:rgba(212,149,106,0.4); }
+.wyr-opt.mine { border-color:var(--gold); background:rgba(212,149,106,0.1); }
+.wyr-opt.partners { border-color:var(--rose); }
+.wyr-opt .tag { position:absolute; top:-9px; right:12px; font-size:0.62rem; background:var(--surface); padding:0.15rem 0.5rem; border-radius:8px; }
+.wyr-or { font-size:0.75rem; color:var(--muted); text-align:center; letter-spacing:0.15em; }
+
+/* Never Have I Ever */
+.nhie-btns { display:flex; gap:1rem; justify-content:center; margin-top:0.5rem; }
+.nhie-btn { flex:1; max-width:150px; padding:0.9rem; border-radius:12px; border:2px solid var(--border); background:var(--surface2); color:var(--text); font-size:0.95rem; cursor:pointer; }
+.nhie-btn.have.on { border-color:var(--rose); background:rgba(201,107,122,0.18); }
+.nhie-btn.havent.on { border-color:var(--gold); background:rgba(212,149,106,0.15); }
+
+/* 36 Questions */
+.q36-set-badge { font-size:0.68rem; color:var(--gold); letter-spacing:0.1em; text-transform:uppercase; margin-bottom:0.6rem; }
+.q36-check { display:flex; gap:0.6rem; justify-content:center; margin-top:1rem; font-size:0.78rem; color:var(--muted); }
+.q36-check span.done { color:var(--online); }
+
+/* How Well Do You Know Me */
+.hwkm-mode-picker { display:flex; gap:0.8rem; }
+.hwkm-mode-btn { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:1rem 1.4rem; cursor:pointer; color:var(--text); font-size:0.88rem; }
+.hwkm-mode-btn:hover { border-color:rgba(212,149,106,0.4); }
+.hwkm-write-area { width:100%; max-width:440px; display:flex; flex-direction:column; gap:0.7rem; }
+.hwkm-write-area textarea, .hwkm-write-area input {
+  background:var(--surface2); border:1px solid var(--border); border-radius:10px;
+  padding:0.8rem 1rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.9rem;
+  outline:none; resize:vertical;
+}
+.hwkm-answer-input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:0.8rem 1rem; color:var(--text); font-size:0.92rem; outline:none; margin-top:1rem; }
+.hwkm-reveal { margin-top:1rem; padding:0.9rem; border-radius:10px; background:rgba(212,149,106,0.08); font-size:0.85rem; }
+.hwkm-reveal .correct { color:var(--online); }
+.hwkm-reveal .wrong { color:var(--rose); }
+
+/* Draw Each Other */
+.draw-canvas-wrap { position:relative; width:100%; max-width:360px; aspect-ratio:1; background:#fff; border-radius:16px; overflow:hidden; touch-action:none; }
+#draw-canvas { width:100%; height:100%; display:block; cursor:crosshair; }
+.draw-tools { display:flex; gap:0.6rem; align-items:center; margin-top:0.8rem; }
+.draw-color { width:26px; height:26px; border-radius:50%; border:2px solid var(--border); cursor:pointer; }
+.draw-color.active { border-color:var(--gold); }
+.draw-clear-btn { background:rgba(201,107,122,0.15); border:1px solid rgba(201,107,122,0.3); color:var(--rose); padding:0.4rem 0.8rem; border-radius:8px; font-size:0.75rem; cursor:pointer; }
+.draw-reveal-wrap { display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; }
+.draw-reveal-item { display:flex; flex-direction:column; align-items:center; gap:0.4rem; }
+.draw-reveal-item img { width:160px; height:160px; object-fit:contain; background:#fff; border-radius:12px; }
+.draw-reveal-item span { font-size:0.75rem; color:var(--muted); }
+.draw-waiting { text-align:center; color:var(--muted); font-size:0.85rem; }
+
+/* Photo Booth */
+.pb-dual-wrap { display:flex; gap:0.7rem; width:100%; max-width:440px; justify-content:center; flex-wrap:wrap; }
+.pb-stage { position:relative; width:100%; max-width:200px; flex:1 1 150px; aspect-ratio:3/4; background:#000; border-radius:16px; overflow:hidden; }
+#pb-self-vid { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); display:block; }
+#pb-partner-vid { width:100%; height:100%; object-fit:cover; display:block; background:#000; }
+.pb-tile-lbl { position:absolute; bottom:8px; left:10px; font-size:0.68rem; color:#fff; background:rgba(0,0,0,0.5); padding:0.15rem 0.5rem; border-radius:10px; z-index:2; }
+.pb-partner-waiting { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; text-align:center; padding:1rem; font-size:0.75rem; color:var(--muted); background:#0d0d1c; }
+.pb-partner-waiting.hide { display:none; }
+.pb-countdown { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-size:3.5rem; color:#fff; background:rgba(0,0,0,0.35); opacity:0; pointer-events:none; transition:opacity 0.2s; z-index:3; }
+.pb-countdown.show { opacity:1; }
+.pb-flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:4; }
+.pb-flash.flash { animation:pbFlash 0.4s ease; }
+@keyframes pbFlash { 0%{opacity:0.9} 100%{opacity:0} }
+.pb-status { font-size:0.82rem; color:var(--muted); text-align:center; }
+.pb-result-wrap { display:flex; gap:0.7rem; }
+.pb-result-wrap img { width:140px; height:186px; object-fit:cover; border-radius:12px; }
+.pb-strip { display:flex; gap:0.5rem; background:#fff; padding:0.6rem; border-radius:12px; }
+
+/* Love Notes */
+.notes-wrap { width:100%; max-width:440px; display:flex; flex-direction:column; gap:1rem; height:100%; padding:1rem 0; }
+.notes-list { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:0.7rem; }
+.note-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:1rem 1.2rem; }
+.note-card .note-from { font-size:0.68rem; color:var(--gold); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.35rem; }
+.note-card .note-text { font-family:'Playfair Display',serif; font-size:1rem; line-height:1.5; }
+.note-card .note-time { font-size:0.65rem; color:var(--muted); margin-top:0.5rem; }
+.notes-compose { display:flex; gap:0.6rem; }
+.notes-compose textarea { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:0.7rem 1rem; color:var(--text); font-family:'DM Sans',sans-serif; font-size:0.9rem; resize:none; outline:none; min-height:50px; }
+.notes-empty { text-align:center; color:var(--muted); font-size:0.85rem; margin-top:2rem; }
+</style>
+</head>
+<body>
+
+<!-- ══ INTRO ══════════════════════════════════════ -->
+<div id="s-intro" class="screen active">
+  <div class="intro-logo">
+    <div class="logo-row">
+      <span class="logo-just">Just</span>
+      <span class="logo-us">Us</span>
+      <div class="logo-dot"></div>
+    </div>
+    <p class="intro-tag">Watch together · Feel closer</p>
+    <div class="intro-bar"></div>
+  </div>
+</div>
+
+<!-- ══ WHO ARE YOU (first time only — you type your own name) ═══ -->
+<div id="s-identity" class="screen">
+  <div class="home-wrap">
+    <div class="home-brand">
+      <h1>Just<em>Us</em></h1>
+      <p>Your private space, just the two of you</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1rem">
+      <div class="field"><label>Who are you?</label><input id="identity-name" type="text" placeholder="Type your name" maxlength="20" autocomplete="off"></div>
+      <button class="btn-primary" onclick="claimIdentity()">Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HOME BASE (returning device — presence + connect) ═══════ -->
+<div id="s-homebase" class="screen">
+  <div class="home-wrap">
+    <div class="home-brand">
+      <h1>Just<em>Us</em></h1>
+      <p>Welcome, <em style="font-style:italic;color:var(--gold)" id="homebase-my-name">—</em></p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:1.4rem;align-items:center">
+      <div class="u-pill" style="padding:0.6rem 1.2rem;font-size:0.95rem">
+        <div class="dot" id="homebase-partner-dot"></div>
+        <span id="homebase-partner-name">—</span>
+        <span id="homebase-partner-status" style="color:var(--muted);margin-left:0.3rem">offline</span>
+      </div>
+      <button class="btn-primary" onclick="connectToPartner()">Connect →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CATEGORY PICKER ═══════════════════════════════════ -->
+<div id="s-category" class="screen">
+  <div class="cat-topbar">
+    <div class="room-brand">Just<em>Us</em></div>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cat-wrap">
+    <h1 class="cat-heading">What shall we do<em>?</em></h1>
+    <div class="cat-grid">
+      <button class="cat-card" onclick="pickCategory('movies')">
+        <span class="cat-icon">🎬</span><span class="cat-lbl">Movies</span>
+        <span class="cat-sub">Watch together</span>
+      </button>
+      <button class="cat-card" onclick="showScr('s-games')">
+        <span class="cat-icon">🎲</span><span class="cat-lbl">Games</span>
+        <span class="cat-sub">Play &amp; connect</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('photobooth')">
+        <span class="cat-icon">📸</span><span class="cat-lbl">Photo Booth</span>
+        <span class="cat-sub">Snap it together</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('notes')">
+        <span class="cat-icon">💌</span><span class="cat-lbl">Love Notes</span>
+        <span class="cat-sub">Leave a message</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GAMES SUB-PICKER ═══════════════════════════════════ -->
+<div id="s-games" class="screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="showScr('s-category')">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cat-wrap">
+    <h1 class="cat-heading">Pick a game<em>.</em></h1>
+    <div class="cat-grid">
+      <button class="cat-card" onclick="pickCategory('wyr')">
+        <span class="cat-icon">🤔</span><span class="cat-lbl">Would You Rather</span>
+        <span class="cat-sub">Choose &amp; compare</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('nhie')">
+        <span class="cat-icon">🙈</span><span class="cat-lbl">Never Have I Ever</span>
+        <span class="cat-sub">Reveal secrets</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('q36')">
+        <span class="cat-icon">💫</span><span class="cat-lbl">36 Questions</span>
+        <span class="cat-sub">Fall in love again</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('hwkm')">
+        <span class="cat-icon">💭</span><span class="cat-lbl">How Well You Know Me</span>
+        <span class="cat-sub">Test each other</span>
+      </button>
+      <button class="cat-card" onclick="pickCategory('draw')">
+        <span class="cat-icon">🎨</span><span class="cat-lbl">Draw Each Other</span>
+        <span class="cat-sub">Simultaneous reveal</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ROOM ═══════════════════════════════════════ -->
+<div id="s-room" class="screen">
+
+  <div id="video-area">
+
+    <!-- Top bar -->
+    <div id="room-bar">
+      <button class="back-btn back-btn-sm" onclick="backToCategories()" title="Back to categories">←</button>
+      <div class="room-brand">Just<em>Us</em></div>
+      <div class="room-right">
+        <div class="users-bar">
+          <div class="u-pill"><div class="dot dot-host" id="dot-h"></div><span class="nm-host" id="nm-h">—</span></div>
+          <div class="u-pill"><div class="dot dot-guest" id="dot-g"></div><span class="nm-guest" id="nm-g">Waiting...</span></div>
+        </div>
+        <button id="remove-file-btn" onclick="removeFile()" title="Remove video & upload new">✕ Remove file</button>
+        <button id="guest-req-btn" onclick="guestRequestMovie()" title="Request to pick a movie">🎬 Request Movie</button>
+      </div>
+    </div>
+
+    <!-- Video -->
+    <video id="vid" playsinline muted></video>
+
+    <!-- Upload overlay (host) -->
+    <div id="upload-ov">
+      <h2>Ready to watch?</h2>
+      <p>Choose a video file — supports MP4, MKV, AVI, WebM, MOV and more, up to 5 GB+</p>
+      <div class="drop-zone" onclick="document.getElementById('file-input-el').click()">
+        <div class="drop-icon">🎬</div>
+        <p><span>Browse video file</span></p>
+        <p style="margin-top:0.3rem;font-size:0.75rem;color:#555">MP4 · MKV · WebM · AVI · MOV</p>
+      </div>
+    </div>
+
+    <!-- Waiting overlay (guest) -->
+    <div id="wait-ov">
+      <div class="spinner"></div>
+      <p id="wait-msg">Waiting for host to select a movie…</p>
+    </div>
+
+    <!-- Controls -->
+    <div id="vid-controls">
+      <div class="prog-wrap" id="prog-wrap">
+        <div class="prog-fill" id="prog-fill"></div>
+        <div class="prog-thumb" id="prog-thumb"></div>
+      </div>
+      <div class="ctrl-row">
+        <button class="c-btn" onclick="prevTrack()" title="Previous">⏮</button>
+        <button class="c-btn lg" id="pp-btn" onclick="togglePlay()">▶</button>
+        <button class="c-btn" onclick="nextTrack()" title="Next">⏭</button>
+        <button class="c-btn" onclick="skip(-10)" title="Back 10s">⏪</button>
+        <button class="c-btn" onclick="skip(10)"  title="Forward 10s">⏩</button>
+        <span class="time-txt" id="time-txt">0:00 / 0:00</span>
+        <button class="c-btn" id="mute-btn" onclick="toggleMute()">🔊</button>
+        <button class="c-btn" id="chat-toggle-btn" onclick="toggleChat()" title="Chat">
+          💬
+          <span class="cbadge" id="cbadge">0</span>
+        </button>
+        <button class="c-btn" id="settings-btn" onclick="toggleSettingsMenu()" title="More">⚙️</button>
+        <button class="c-btn" onclick="goFullscreen()">⛶</button>
+      </div>
+    </div>
+
+    <!-- Settings menu (Playlist · Subtitles · Live Call) -->
+    <div id="settings-menu">
+      <button class="settings-item" onclick="closeSettingsMenu();togglePlaylist();">
+        <span class="si-icon">📋</span><span>Playlist</span>
+      </button>
+      <button class="settings-item" onclick="closeSettingsMenu();toggleSubtitlePanel();">
+        <span class="si-icon" id="sub-toggle-btn">CC</span><span>Subtitles</span>
+      </button>
+      <button class="settings-item" onclick="closeSettingsMenu();toggleLiveFeed();">
+        <span class="si-icon live-feed-btn" id="live-feed-btn">📷</span><span>Live Call</span>
+      </button>
+    </div>
+
+    <!-- Gesture indicators -->
+    <div class="gest-hint" id="gest-left">⏪ 10s</div>
+    <div class="gest-hint" id="gest-right">10s ⏩</div>
+
+    <!-- HUD bars for volume/brightness -->
+    <div class="hud-bar" id="hud-vol">
+      <div class="hud-fill" id="hud-vol-fill" style="height:100%"></div>
+    </div>
+    <div class="hud-bar" id="hud-bri">
+      <div class="hud-fill" id="hud-bri-fill" style="height:100%"></div>
+    </div>
+
+    <!-- Playlist panel -->
+    <div id="playlist-panel">
+      <div class="pl-hdr">
+        <h3>Playlist</h3>
+        <div class="pl-hdr-right">
+          <button class="pl-add-btn" onclick="document.getElementById('pl-file-input').click()">+ Add files</button>
+          <button class="pl-clear-btn" onclick="clearPlaylist()">Clear all</button>
+          <button class="close-pl" onclick="togglePlaylist()">✕</button>
+        </div>
+      </div>
+      <div id="pl-list">
+        <div class="pl-empty">No files added yet</div>
+      </div>
+    </div>
+    <!-- Subtitle panel -->
+    <div id="sub-panel">
+      <div class="pl-hdr">
+        <h3>Subtitles</h3>
+        <button class="close-pl" onclick="toggleSubtitlePanel()">✕</button>
+      </div>
+      <div class="sub-body">
+        <div class="sub-row">
+          <button class="pl-add-btn" onclick="openSubtitlePicker()">+ Load file (.srt / .vtt)</button>
+          <button class="pl-clear-btn" id="sub-remove-btn" onclick="removeSubtitle()" style="display:none">Remove</button>
+        </div>
+        <div class="sub-filename" id="sub-filename">No subtitle loaded</div>
+
+        <div class="sub-row sub-toggle-row">
+          <span>Show subtitles</span>
+          <button class="sub-switch" id="sub-switch-btn" onclick="toggleSubtitles()" title="Toggle subtitles"></button>
+        </div>
+
+        <div class="sub-row sub-toggle-row">
+          <span>Show partner subtitle</span>
+          <button class="sub-switch" id="sub-partner-switch" onclick="toggleShowPartnerSub()" title="Show your partner's subtitle"></button>
+        </div>
+        <button class="sub-reset-btn" id="sub-download-btn" onclick="downloadPartnerSubtitle()" style="display:none;color:var(--gold);text-decoration:none">⬇ Download partner's subtitle</button>
+
+        <div class="sub-row sub-delay-row">
+          <span>Sync delay</span>
+          <div class="sub-delay-ctrls">
+            <button class="sub-delay-btn" onclick="adjustSubDelay(-2)">−2s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(-1)">−1s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(-0.5)">−0.5s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(-0.1)">−0.1s</button>
+            <span class="sub-delay-val" id="sub-delay-val">0.0s</span>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(0.1)">+0.1s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(0.5)">+0.5s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(1)">+1s</button>
+            <button class="sub-delay-btn" onclick="adjustSubDelay(2)">+2s</button>
+          </div>
+        </div>
+        <button class="sub-reset-btn" onclick="resetSubDelay()">Reset delay to 0</button>
+
+        <div class="sub-divider"></div>
+
+        <div class="sub-row sub-style-row">
+          <span>Text size</span>
+          <div class="sub-delay-ctrls">
+            <button class="sub-delay-btn" onclick="adjustSubFontSize(-2)">A−</button>
+            <span class="sub-delay-val" id="sub-fontsize-val">22px</span>
+            <button class="sub-delay-btn" onclick="adjustSubFontSize(2)">A+</button>
+          </div>
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Text colour</span>
+          <input type="color" id="sub-color-input" class="sub-color-swatch" value="#fdf6ec" onchange="setSubTextColor(this.value)">
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Background</span>
+          <input type="color" id="sub-bg-input" class="sub-color-swatch" value="#000000" onchange="setSubBgColor(this.value)">
+        </div>
+        <div class="sub-row sub-style-row">
+          <span>Background opacity</span>
+          <div class="sub-delay-ctrls">
+            <input type="range" id="sub-opacity-input" min="0" max="100" value="70" oninput="setSubBgOpacity(this.value)">
+            <span class="sub-delay-val" id="sub-opacity-val">70%</span>
+          </div>
+        </div>
+        <div class="sub-row sub-toggle-row">
+          <span>Reposition (drag / pinch)</span>
+          <button class="sub-switch" id="sub-reposition-switch" onclick="toggleSubReposition()" title="Toggle drag &amp; pinch-resize"></button>
+        </div>
+        <button class="sub-reset-btn" onclick="resetSubStyle()">Reset appearance &amp; position</button>
+      </div>
+    </div>
+
+    <!-- Custom draggable / pinch-resizable subtitle overlay -->
+    <div id="sub-overlay">
+      <div id="sub-overlay-text"></div>
+      <div id="sub-resize-handle"></div>
+    </div>
+
+    <!-- Chat panel (inside video-area so it overlays correctly) -->
+    <div id="chat-panel">
+      <div class="chat-hdr">
+        <h3>Chat</h3>
+        <button class="close-c" onclick="toggleChat()">✕</button>
+      </div>
+      <div id="chat-msgs"></div>
+      <div class="chat-bottom">
+        <button class="i-btn" id="mic-btn"
+          onmousedown="startRec()" ontouchstart="startRec(event)"
+          onmouseup="stopRec()"   ontouchend="stopRec(event)"
+          title="Hold to record voice">🎤</button>
+        <span id="mic-label"></span>
+        <input id="chat-in" type="text" placeholder="Say something…" maxlength="300"
+          onkeydown="if(event.key==='Enter')sendMsg()">
+        <button class="i-btn send-btn" onclick="sendMsg()">↑</button>
+      </div>
+    </div>
+
+  </div><!-- /video-area -->
+
+  <!-- Hidden file inputs — always outside any visible overlay -->
+  <input type="file" id="file-input-el"  accept="video/*,.mkv,.avi,.mov,.mp4,.webm,.m4v,.flv,.wmv,.3gp" style="display:none">
+  <input type="file" id="pl-file-input"  accept="video/*,.mkv,.avi,.mov,.mp4,.webm,.m4v" multiple style="display:none">
+  <input type="file" id="guest-file-input" accept="video/*,.mkv,.avi,.mov,.mp4,.webm,.m4v,.flv,.wmv,.3gp" style="display:none">
+  <input type="file" id="sub-file-input" accept=".srt,.vtt,text/vtt,application/x-subrip" style="display:none">
+
+</div><!-- /s-room -->
+
+<!-- ══ WOULD YOU RATHER ═══════════════════════════════════ -->
+<div id="s-wyr" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body">
+    <div class="game-progress" id="wyr-progress">Question 1 of 15</div>
+    <div class="wyr-split">
+      <div class="wyr-opt" id="wyr-optA" onclick="wyrPick('A')"></div>
+      <div class="wyr-or">or</div>
+      <div class="wyr-opt" id="wyr-optB" onclick="wyrPick('B')"></div>
+    </div>
+    <div class="game-status" id="wyr-status"></div>
+    <div class="game-nav">
+      <button class="game-nav-btn ghost" onclick="wyrPrev()">← Prev</button>
+      <button class="game-nav-btn" onclick="wyrNext()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ NEVER HAVE I EVER ═══════════════════════════════════ -->
+<div id="s-nhie" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body">
+    <div class="game-progress" id="nhie-progress">Statement 1 of 20</div>
+    <div class="game-card">
+      <div class="game-q" id="nhie-text"></div>
+      <div class="nhie-btns">
+        <button class="nhie-btn have" id="nhie-have" onclick="nhiePick(true)">🙋 I have</button>
+        <button class="nhie-btn havent" id="nhie-havent" onclick="nhiePick(false)">🙅 I haven't</button>
+      </div>
+    </div>
+    <div class="game-status" id="nhie-status"></div>
+    <div class="game-nav">
+      <button class="game-nav-btn ghost" onclick="nhiePrev()">← Prev</button>
+      <button class="game-nav-btn" onclick="nhieNext()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ 36 QUESTIONS ═══════════════════════════════════ -->
+<div id="s-q36" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body">
+    <div class="game-progress" id="q36-progress">Question 1 of 36</div>
+    <div class="game-card">
+      <div class="q36-set-badge" id="q36-set"></div>
+      <div class="game-q" id="q36-text"></div>
+    </div>
+    <div class="q36-check">
+      <span id="q36-host-check">Host: not yet</span>
+      <span id="q36-guest-check">Guest: not yet</span>
+    </div>
+    <div class="game-nav">
+      <button class="game-nav-btn ghost" onclick="q36Prev()">← Prev</button>
+      <button class="game-nav-btn ghost" id="q36-ready-btn" onclick="q36MarkDone()">I'm ready ✓</button>
+      <button class="game-nav-btn" onclick="q36Next()">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HOW WELL DO YOU KNOW ME ═══════════════════════════════════ -->
+<div id="s-hwkm" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body" id="hwkm-body">
+    <!-- populated dynamically by initHWKM() -->
+  </div>
+</div>
+
+<!-- ══ DRAW EACH OTHER ═══════════════════════════════════ -->
+<div id="s-draw" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body" id="draw-body">
+    <p style="font-family:'Playfair Display',serif;font-size:1.1rem;text-align:center">Draw your partner's face 🎨<br><span style="font-size:0.78rem;color:var(--muted);font-family:'DM Sans',sans-serif">Both drawings stay hidden until you both submit</span></p>
+    <div class="draw-canvas-wrap"><canvas id="draw-canvas"></canvas></div>
+    <div class="draw-tools">
+      <div class="draw-color active" style="background:#000" onclick="drawSetColor('#000000',this)"></div>
+      <div class="draw-color" style="background:#c96b7a" onclick="drawSetColor('#c96b7a',this)"></div>
+      <div class="draw-color" style="background:#d4956a" onclick="drawSetColor('#d4956a',this)"></div>
+      <div class="draw-color" style="background:#4a7fc9" onclick="drawSetColor('#4a7fc9',this)"></div>
+      <div class="draw-color" style="background:#5fb865" onclick="drawSetColor('#5fb865',this)"></div>
+      <button class="draw-clear-btn" onclick="drawClear()">Clear</button>
+    </div>
+    <button class="game-nav-btn" onclick="drawSubmit()" id="draw-submit-btn">Submit Drawing ✓</button>
+    <div class="game-status" id="draw-status"></div>
+  </div>
+</div>
+
+<!-- ══ PHOTO BOOTH ═══════════════════════════════════ -->
+<div id="s-photobooth" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="game-body" id="pb-body">
+    <div class="pb-dual-wrap">
+      <div class="pb-stage">
+        <video id="pb-self-vid" autoplay playsinline muted></video>
+        <div class="pb-countdown" id="pb-countdown">3</div>
+        <div class="pb-flash" id="pb-flash"></div>
+        <span class="pb-tile-lbl">You</span>
+      </div>
+      <div class="pb-stage">
+        <video id="pb-partner-vid" autoplay playsinline></video>
+        <div class="pb-partner-waiting" id="pb-partner-waiting">Waiting for partner's camera…</div>
+        <span class="pb-tile-lbl">Partner</span>
+      </div>
+    </div>
+    <div class="pb-status" id="pb-status">Tap ready when you're set — photo snaps when you're both ready</div>
+    <button class="game-nav-btn" id="pb-ready-btn" onclick="pbToggleReady()">I'm Ready 📸</button>
+    <div id="pb-result-area"></div>
+  </div>
+</div>
+
+<!-- ══ LOVE NOTES ═══════════════════════════════════ -->
+<div id="s-notes" class="screen game-screen">
+  <div class="cat-topbar">
+    <button class="back-btn" onclick="backToCategories()">← Categories</button>
+    <div class="room-right">
+      <div class="users-bar">
+        <div class="u-pill"><div class="dot dot-host"></div><span class="nm-host">—</span></div>
+        <div class="u-pill"><div class="dot dot-guest"></div><span class="nm-guest">Waiting...</span></div>
+      </div>
+      <span class="si-icon live-feed-btn" onclick="toggleLiveFeed()" style="cursor:pointer;font-size:1.2rem;padding:0.3rem">📷</span>
+    </div>
+  </div>
+  <div class="game-body" style="align-items:stretch">
+    <div class="notes-wrap">
+      <div class="notes-list" id="notes-list">
+        <div class="notes-empty">No notes yet — leave the first one 💌</div>
+      </div>
+      <div class="notes-compose">
+        <textarea id="notes-input" placeholder="Write something sweet…" maxlength="500"></textarea>
+        <button class="game-nav-btn" onclick="sendNote()">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Camera call window — GLOBAL, works from any category screen -->
+<div id="cam-window">
+  <video id="cam-remote" autoplay playsinline></video>
+  <div id="cam-self-wrap">
+    <video id="cam-self" autoplay playsinline muted></video>
+  </div>
+  <div id="cam-titlebar">
+    <span class="cam-lbl">📷 Live</span>
+    <div class="cam-tb-btns">
+      <button class="cam-tb-btn" id="cam-minimize-btn" onclick="toggleCamMinimize()" title="Minimize">–</button>
+      <button class="cam-tb-btn" onclick="turnOffCamera()" title="End call">✕</button>
+    </div>
+  </div>
+  <div id="cam-toolbar">
+    <button class="cam-ctrl-btn" id="cam-mic-btn"  onclick="toggleCamMic()"     title="Mute mic">🎤</button>
+    <button class="cam-ctrl-btn" id="cam-spk-btn"  onclick="toggleCamSpeaker()" title="Mute partner audio">🔊</button>
+    <button class="cam-ctrl-btn" id="cam-vid-btn"  onclick="toggleCamVideo()"   title="Turn off camera">📷</button>
+    <button class="cam-ctrl-btn hang" onclick="turnOffCamera()" title="End call">📵</button>
+  </div>
+  <div id="cam-resize-handle"></div>
+  <div id="cam-connecting">
+    <div class="spinner"></div>
+    <span>Connecting…</span>
+  </div>
+</div>
+
+<!-- Message popup for closed chat -->
+<div id="msg-popup">
+  <div class="popup-sender" id="popup-sender"></div>
+  <div class="popup-body"   id="popup-body"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Host approval popup for guest movie request -->
+<div id="approve-popup">
+  <div class="app-title">Movie Request</div>
+  <div class="app-msg" id="approve-msg">Your partner wants to pick a movie</div>
+  <div class="app-btns">
+    <button class="app-yes" onclick="approveGuestRequest(true)">Allow ✓</button>
+    <button class="app-no"  onclick="approveGuestRequest(false)">Deny ✕</button>
+  </div>
+</div>
+
+<!-- Camera request popup -->
+<div id="cam-req-popup">
+  <div class="app-title">Live Feed Request 📷</div>
+  <div class="app-msg" id="cam-req-msg">Your partner wants to see you live</div>
+  <div class="app-btns">
+    <button class="app-yes" onclick="respondCamRequest(true)">Turn On 📷</button>
+    <button class="app-no"  onclick="respondCamRequest(false)">Decline ✕</button>
+  </div>
+</div>
+
+<!-- Firebase v9 compat -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script>
+// ── REFRESH WARNING ─────────────────────────────────────────
+window.addEventListener('beforeunload', e => {
+  if (roomId) { e.preventDefault(); e.returnValue='Refreshing will disconnect you. Are you sure?'; return e.returnValue; }
+});
+
+// ── FIREBASE ─────────────────────────────────────────────────
+firebase.initializeApp({
+  apiKey:"AIzaSyA2C4KP_M7S8KdZ3Nfo2DrQKnGUdD5t7HE",
+  authDomain:"justus-app-c353a.firebaseapp.com",
+  projectId:"justus-app-c353a",
+  storageBucket:"justus-app-c353a.firebasestorage.app",
+  messagingSenderId:"76949984065",
+  appId:"1:76949984065:web:428a0d348a3c3ab31f47c0",
+  databaseURL:"https://justus-app-c353a-default-rtdb.firebaseio.com"
+});
+const db = firebase.database();
+
+// ── ICE (STUN + TURN for reliability) ───────────────────────
+const ICE = {
+  iceServers:[
+    {urls:'stun:stun.l.google.com:19302'},
+    {urls:'stun:stun1.l.google.com:19302'},
+    {urls:'stun:stun2.l.google.com:19302'},
+    {urls:'stun:stun.relay.metered.ca:80'},
+    {
+      urls:'turn:global.relay.metered.ca:80',
+      username:'6ffd848f04cc9eae3a946222', credential:'kAxMizxU0jo8nz4O'
+    },
+    {
+      urls:'turn:global.relay.metered.ca:80?transport=tcp',
+      username:'6ffd848f04cc9eae3a946222', credential:'kAxMizxU0jo8nz4O'
+    },
+    {
+      urls:'turn:global.relay.metered.ca:443',
+      username:'6ffd848f04cc9eae3a946222', credential:'kAxMizxU0jo8nz4O'
+    },
+    {
+      urls:'turns:global.relay.metered.ca:443?transport=tcp',
+      username:'6ffd848f04cc9eae3a946222', credential:'kAxMizxU0jo8nz4O'
+    }
+  ],
+  iceCandidatePoolSize:10,
+  bundlePolicy:'max-bundle',
+  rtcpMuxPolicy:'require'
+};
+
+// ── STATE ────────────────────────────────────────────────────
+const sessionId = Math.random().toString(36).substr(2,9); // unique per page load — used for echo guards
+let _lastReceivedSubText=''; // declared here (before watchSubtitleSync) to avoid temporal dead zone
+let role=null, roomId=null, myName=null, roomRef=null;
+let pc=null, localStream=null;
+let mediaRec=null, audioChunks=[], isRec=false, recStart=0, recTimerInt=null;
+let chatOpen=false, unread=0;
+let playlist=[], currentIdx=-1;
+let localBrightness=1.0;
+let heartbeatInt=null;
+let reconnecting=false;
+// RTC session guards — prevent duplicate peer connections from listener re-fires
+let guestRTCStarted=false;
+let hostWatchStarted=false;
+// Track Firebase listeners so we can detach stale ones before new RTC sessions
+let fbListeners={}; // key → {ref, event}
+
+const vid     = document.getElementById('vid');
+const fileEl  = document.getElementById('file-input-el');
+const plFileEl= document.getElementById('pl-file-input');
+
+// ── FIXED SHARED ROOM ─────────────────────────────────────────
+// There are only ever two of you — no room codes needed anymore.
+// This is the one permanent space you both always come back to.
+const FIXED_ROOM_ID = 'justus-permanent-space';
+
+// ── IDENTITY (device remembers who YOU are, forever — never the partner's name) ──
+function getIdentity(){
+  try { const raw=localStorage.getItem('justus_identity'); return raw ? JSON.parse(raw) : null; } catch(e){ return null; }
+}
+function saveIdentity(name, r){
+  try { localStorage.setItem('justus_identity', JSON.stringify({name, role:r})); } catch(e){}
+}
+
+// First-time only: you type your own name, nothing is ever pre-filled.
+// Whichever of you does this first becomes "host", the second becomes "guest" —
+// purely an internal technical label, never shown to either of you.
+async function claimIdentity(){
+  const name=document.getElementById('identity-name').value.trim();
+  if(!name){ toast('Type your name first'); return; }
+  const ref=db.ref('rooms/'+FIXED_ROOM_ID);
+  const snap=await ref.once('value');
+  const d=snap.val()||{};
+  let claimedRole=null;
+  if(!d.host || !d.host.name)            claimedRole='host';
+  else if(d.host.name===name)            claimedRole='host';  // re-claiming your own identity from a new device
+  else if(!d.guest || !d.guest.name)     claimedRole='guest';
+  else if(d.guest.name===name)           claimedRole='guest';
+  else { toast("This space already belongs to two people — check the spelling of your name"); return; }
+
+  role=claimedRole; myName=name; roomId=FIXED_ROOM_ID;
+  roomRef=ref;
+  // Write the claim to Firebase immediately — not deferred until Connect is
+  // tapped. Otherwise, if both of you set up your name before either one
+  // taps Connect, the second person's claim check would still see an empty
+  // slot and could claim 'host' too, colliding with the first person.
+  await roomRef.child(claimedRole).update({name, online:false});
+  saveIdentity(name, role);
+  goToHomeBase();
+}
+
+function goToHomeBase(){
+  document.getElementById('homebase-my-name').textContent=myName;
+  showScr('s-homebase');
+  watchHomeBasePresence();
+}
+
+let homeBasePresenceWatching=false;
+function watchHomeBasePresence(){
+  if(homeBasePresenceWatching) return;
+  homeBasePresenceWatching=true;
+  const partnerKey = role==='host' ? 'guest' : 'host';
+  roomRef.child(partnerKey).on('value', s=>{
+    const d=s.val()||{};
+    document.getElementById('homebase-partner-name').textContent = d.name || "Waiting for them to set up their name…";
+    document.getElementById('homebase-partner-dot').className = 'dot'+(d.online?' on':'');
+    document.getElementById('homebase-partner-status').textContent = d.online ? 'online' : 'offline';
+  });
+}
+
+// Tap "Connect" → marks you online, links you both into the shared space
+function connectToPartner(){
+  const key = role==='host' ? 'host' : 'guest';
+  roomRef.child(key).update({name:myName, online:true});
+  roomRef.child(key+'/online').onDisconnect().set(false);
+  const partnerKey = role==='host' ? 'guest' : 'host';
+  roomRef.child(partnerKey).once('value').then(s=>{
+    const d=s.val()||{};
+    toast("You're now connected to "+(d.name || 'your partner')+" 💛");
+  });
+  enterRoom();
+}
+
+// ── INTRO → IDENTITY (first time) or HOME BASE (every return visit) ──
+setTimeout(()=>{
+  const id=getIdentity();
+  if(id){
+    role=id.role; myName=id.name; roomId=FIXED_ROOM_ID;
+    roomRef=db.ref('rooms/'+FIXED_ROOM_ID);
+    goToHomeBase();
+  } else {
+    showScr('s-identity');
+  }
+}, 2800);
+
+// ── UI HELPERS ───────────────────────────────────────────────
+function showScr(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function toast(msg, dur=2800){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),dur);
+}
+function fmt(s){
+  if(!s||isNaN(s))return'0:00';
+  const m=Math.floor(s/60),sec=Math.floor(s%60);
+  return m+':'+String(sec).padStart(2,'0');
+}
+
+function enterRoom(){
+  showScr('s-category');
+  watchPresence();
+  watchChat();
+  watchControl();
+  watchCamSignal();
+  watchSubtitleSync();
+  watchCategory();
+  startHeartbeat();
+  // Show controls + toggle button immediately on entry
+  setTimeout(showCtrls, 100);
+}
+
+// ── CATEGORY ROUTING ────────────────────────────────────────
+// Whichever partner picks a category, both are routed there together.
+let currentCategory=null;
+let categoryInited={}; // tracks which category's setup fn has run this session, so we don't re-init on every Firebase echo
+
+function watchCategory(){
+  roomRef.child('category').on('value', s=>{
+    const cat=s.val();
+    if(!cat || cat===currentCategory) return;
+    if(cat==='picker'){ currentCategory=null; stopPBCameraIfActive(); showScr('s-category'); return; }
+    goToCategory(cat, false);
+  });
+}
+
+function pickCategory(cat){
+  stopPBCameraIfActive();
+  roomRef.child('category').set(cat);
+  goToCategory(cat, true);
+}
+
+function stopPBCameraIfActive(){
+  if(pbStream){ pbStream.getTracks().forEach(t=>t.stop()); pbStream=null; }
+  clearInterval(pbCountdownTimer);
+  clearTimeout(pbConnectTimeout);
+  if(pbPc){ pbPc.close(); pbPc=null; }
+  _detachPBListeners();
+  const pv=document.getElementById('pb-partner-vid');
+  if(pv) pv.srcObject=null;
+  const pw=document.getElementById('pb-partner-waiting');
+  if(pw) pw.classList.remove('hide');
+}
+
+function goToCategory(cat, isPicker){
+  currentCategory=cat;
+  document.querySelectorAll('.users-bar,.room-right').forEach(()=>{}); // no-op, presence stays global via IDs
+  const screenMap={
+    movies:'s-room', games:'s-games', wyr:'s-wyr', nhie:'s-nhie',
+    q36:'s-q36', hwkm:'s-hwkm', draw:'s-draw', photobooth:'s-photobooth', notes:'s-notes'
+  };
+  const scr=screenMap[cat];
+  if(!scr) return;
+  showScr(scr);
+  if(!categoryInited[cat]){
+    categoryInited[cat]=true;
+    if(cat==='movies'){ role==='host' ? setupHostFlow() : setupGuestFlow(); }
+    else if(cat==='wyr') initWYR();
+    else if(cat==='nhie') initNHIE();
+    else if(cat==='q36') initQ36();
+    else if(cat==='hwkm') initHWKM();
+    else if(cat==='draw') initDraw();
+    else if(cat==='photobooth') initPhotoBooth();
+    else if(cat==='notes') initNotes();
+  } else if(cat==='photobooth'){
+    // Re-entering photo booth after leaving — camera was stopped, restart it
+    initPhotoBooth();
+  }
+}
+
+function backToCategories(){
+  currentCategory=null;
+  stopPBCameraIfActive();
+  roomRef.child('category').set('picker');
+  showScr('s-category');
+}
+
+// ── HEARTBEAT (keeps Firebase connection alive, prevents 1-min drop) ──
+function startHeartbeat(){
+  heartbeatInt=setInterval(()=>{
+    if(!roomRef)return;
+    const path=role==='host'?'host':'guest';
+    roomRef.child(path+'/heartbeat').set(Date.now());
+    // Host also broadcasts current movie time every heartbeat so the guest's
+    // subtitle time estimation stays accurate even without play/pause/seek events.
+    if(role==='host' && vid.readyState>=1){
+      roomRef.child('ctrl').set({
+        by:'host', action: vid.paused ? 'pause' : 'tick',
+        time: vid.currentTime, duration: vid.duration||0, ts: Date.now()
+      }).catch(()=>{});
+    }
+    // Keep WebRTC alive with keepalive check
+    if(pc){
+      const st=pc.iceConnectionState;
+      if(st==='disconnected'||st==='failed'){
+        toast('Reconnecting…'); attemptReconnect();
+      }
+    }
+  },20000); // every 20 seconds
+}
+
+async function attemptReconnect(){
+  if(reconnecting)return; reconnecting=true;
+  toast('Connection lost — reconnecting…',4000);
+  try{
+    if(pc){ pc.close(); pc=null; }
+    await new Promise(r=>setTimeout(r,2000));
+    if(role==='host'){
+      // Re-capture from the currently loaded video element
+      const capture=vid.captureStream||vid.mozCaptureStream;
+      if(capture && vid.readyState>=2) await doHostRTC();
+      else toast('Could not reconnect — video not ready.');
+    } else if(role==='guest'){
+      guestRTCStarted=false; // allow doGuestRTC to run again
+      await doGuestRTC();
+    }
+  }catch(e){ toast('Could not reconnect. Please refresh.'); }
+  reconnecting=false;
+}
+
+// ── PRESENCE ─────────────────────────────────────────────────
+function watchPresence(){
+  roomRef.child('host').on('value',s=>{
+    const d=s.val()||{};
+    document.querySelectorAll('.nm-host').forEach(el=>el.textContent=d.name||'—');
+    document.querySelectorAll('.dot-host').forEach(el=>el.className='dot dot-host'+(d.online?' on':''));
+  });
+  roomRef.child('guest').on('value',s=>{
+    const d=s.val()||{};
+    document.querySelectorAll('.nm-guest').forEach(el=>el.textContent=d.name||'Waiting...');
+    document.querySelectorAll('.dot-guest').forEach(el=>el.className='dot dot-guest'+(d.online?' on':''));
+  });
+}
+
+// ── HOST FLOW ────────────────────────────────────────────────
+function setupHostFlow(){
+  document.getElementById('upload-ov').style.display='flex';
+  document.getElementById('wait-ov').classList.remove('show');
+
+  fileEl.addEventListener('change', e=>{
+    const file=e.target.files[0]; if(!file)return;
+    fileEl.value='';
+    loadVideoFile(file, true);
+  });
+
+  plFileEl.addEventListener('change', e=>{
+    const files=Array.from(e.target.files);
+    files.forEach(f=>addToPlaylist(f));
+    plFileEl.value='';
+    if(currentIdx===-1&&playlist.length>0) playIdx(0, true);
+  });
+
+  // Host watches for guest movie requests and guest-initiated streams
+  watchGuestMovieRequest();
+  watchGuestStream();
+}
+
+// ── MKV SUPPORT ─────────────────────────────────────────────
+// Chrome/Edge reject the Matroska (.mkv) container regardless of codec.
+// In-browser conversion isn't feasible on GitHub Pages without breaking
+// the WebRTC streaming (the required headers conflict with captureStream).
+// When an MKV is selected, we show a clear popup directing the user to
+// HandBrake (free, ~60 seconds, lossless). Non-MKV files pass through untouched.
+
+function prepareVideoFile(file){
+  const isMkv = /\.mkv$/i.test(file.name) || file.type === 'video/x-matroska';
+  if(!isMkv) return file; // non-MKV: return immediately, no async needed
+  showHandBrakeFallback();
+  return null;
+}
+
+function showHandBrakeFallback(){
+  const existing = document.getElementById('mkv-fallback-popup');
+  if(existing) existing.remove();
+  const popup = document.createElement('div');
+  popup.id = 'mkv-fallback-popup';
+  popup.style.cssText = `
+    position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    z-index:9999;background:rgba(14,14,28,0.98);border:1px solid rgba(212,149,106,0.4);
+    border-radius:16px;padding:1.6rem 1.8rem;max-width:340px;width:90%;
+    backdrop-filter:blur(16px);text-align:center;font-family:'DM Sans',sans-serif;
+    box-shadow:0 12px 40px rgba(0,0,0,0.8);
+  `;
+  popup.innerHTML = `
+    <div style="font-size:1.8rem;margin-bottom:0.6rem">🎬</div>
+    <div style="font-size:1rem;font-weight:600;color:#f0ebe4;margin-bottom:0.5rem">MKV isn't supported</div>
+    <div style="font-size:0.82rem;color:#6b6880;margin-bottom:1.1rem;line-height:1.5">
+      Your browser can't open MKV files directly.
+      <br><br>
+      Convert it to MP4 first using <strong style="color:#d4956a">HandBrake</strong> (free) —
+      takes about 1 minute and there's no quality loss.
+    </div>
+    <a href="https://handbrake.fr" target="_blank" rel="noopener"
+      style="display:inline-block;background:rgba(212,149,106,0.2);border:1px solid rgba(212,149,106,0.4);
+      color:#d4956a;padding:0.55rem 1.2rem;border-radius:8px;font-size:0.85rem;
+      text-decoration:none;margin-bottom:0.8rem">
+      Download HandBrake →
+    </a><br>
+    <button onclick="document.getElementById('mkv-fallback-popup').remove()"
+      style="background:none;border:none;color:#6b6880;font-size:0.78rem;
+      cursor:pointer;font-family:'DM Sans',sans-serif;text-decoration:underline">
+      Dismiss
+    </button>
+  `;
+  document.body.appendChild(popup);
+}
+
+
+
+
+
+async function loadVideoFile(file, needsRTC=false){
+  document.getElementById('upload-ov').style.display='none';
+  document.getElementById('remove-file-btn').style.display='flex';
+  document.getElementById('wait-ov').classList.add('show');
+  document.getElementById('wait-msg').textContent='Loading video…';
+
+  file = prepareVideoFile(file); // shows HandBrake popup for MKV and returns null; passes non-MKV through
+  if(!file){
+    document.getElementById('wait-ov').classList.remove('show');
+    document.getElementById('upload-ov').style.display='flex';
+    document.getElementById('remove-file-btn').style.display='none';
+    return;
+  }
+
+  // Release previous source cleanly before assigning new one
+  if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+  if(vid.srcObject){ vid.srcObject=null; }
+  vid.onerror=null;
+
+  const url = URL.createObjectURL(file);
+  vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
+
+  vid.onerror=()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    document.getElementById('upload-ov').style.display='flex';
+    document.getElementById('remove-file-btn').style.display='none';
+    toast('⚠️ Browser can\'t play this format. Try MP4 or WebM.');
+  };
+
+  // Wrap onReady in a promise so we can await it and handle timeouts
+  await new Promise((resolve)=>{
+    // Timeout fallback — if loadeddata never fires in 30s, bail out
+    const timeout=setTimeout(()=>{
+      document.getElementById('wait-ov').classList.remove('show');
+      toast('⚠️ Video took too long to load. Try a smaller file or MP4 format.');
+      resolve();
+    }, 30000);
+
+    vid.addEventListener('loadeddata', async ()=>{
+      clearTimeout(timeout);
+      document.getElementById('wait-ov').classList.remove('show');
+      // Start playback first so captureStream gets live frames
+      try{ await vid.play(); }catch(_){}
+      bindVideoUI();
+      if(needsRTC){
+        await roomRef.child('videoReady').set(true);
+        if(pc){ pc.close(); pc=null; }
+        await doHostRTC();
+      } else if(pc){
+        // Live RTC session — swap stream tracks in-place
+        try{
+          const capture=vid.captureStream||vid.mozCaptureStream;
+          if(capture){
+            const newStream=capture.call(vid,30); // keep 30fps on swap too
+            const senders=pc.getSenders();
+            newStream.getTracks().forEach(newTrack=>{
+              const sender=senders.find(s=>s.track&&s.track.kind===newTrack.kind);
+              if(sender) sender.replaceTrack(newTrack).catch(()=>{});
+            });
+            localStream=newStream;
+          }
+        } catch(err){ toast('Track swap error: '+err.message); }
+      }
+      resolve();
+    }, {once:true});
+
+    vid.load();
+  });
+}
+
+// (bitrate is now set reliably via addTransceiver/sendEncodings at negotiation time —
+// no separate boost step needed)
+
+// ── REMOVE FILE (stop current video, keep playlist intact) ──
+function removeFile(){
+  if(!confirm('Stop current video and return to upload screen?'))return;
+  vid.pause();
+  if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+  vid.src=''; vid.srcObject=null; vid.removeAttribute('src');
+  currentIdx=-1;
+  renderPlaylist();
+  document.getElementById('upload-ov').style.display='flex';
+  document.getElementById('remove-file-btn').style.display='none';
+  document.getElementById('prog-fill').style.width='0%';
+  document.getElementById('prog-thumb').style.left='0%';
+  document.getElementById('time-txt').textContent='0:00 / 0:00';
+  document.getElementById('pp-btn').textContent='▶';
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  // Reset session guards so next video can start a fresh RTC session
+  guestRTCStarted=false; hostWatchStarted=false;
+  if(roomRef) roomRef.child('videoReady').set(false);
+}
+
+// ── CLEAR ENTIRE PLAYLIST ────────────────────────────────────
+function clearPlaylist(){
+  if(!playlist.length) return;
+  if(!confirm('Clear entire playlist?')) return;
+  playlist.forEach(item=>{ try{ URL.revokeObjectURL(item.url); }catch(_){} });
+  playlist=[]; currentIdx=-1;
+  renderPlaylist();
+}
+
+async function doHostRTC(){
+  // Detach any stale RTC-related Firebase listeners from previous session
+  _detachRTCListeners();
+  // Clear stale ICE candidates and answer from Firebase so guest doesn't get old data
+  await Promise.all([
+    roomRef.child('cands/host').remove().catch(()=>{}),
+    roomRef.child('cands/guest').remove().catch(()=>{}),
+    roomRef.child('answer').remove().catch(()=>{}),
+  ]);
+
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  const capture=vid.captureStream||vid.mozCaptureStream;
+  if(!capture){ toast('Streaming requires Chrome or Edge.'); return; }
+
+  const doCapture=async()=>{
+    try{
+      localStream=capture.call(vid,30); // lock capture to 30fps
+      // Wait for tracks if captureStream returned empty (can happen on first frame)
+      if(!localStream.getTracks().length){
+        await new Promise(r=>setTimeout(r,500));
+        localStream=capture.call(vid,30);
+      }
+      if(!localStream.getTracks().length){ toast('No video tracks found — try playing the video first.'); return; }
+
+      // addTrack is the universally compatible path for all browsers including mobile.
+      // addTransceiver+sendEncodings was causing blank video on phone↔laptop connections.
+      localStream.getTracks().forEach(t=> pc.addTrack(t, localStream));
+
+      // Optionally prefer H.264 codec — silent no-op if browser doesn't support this API.
+      // Must be called AFTER addTrack and BEFORE createOffer.
+      pc.getTransceivers().forEach(tx=>{
+        if(tx.sender.track?.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+          try{
+            const caps=RTCRtpSender.getCapabilities('video').codecs;
+            const ordered=[
+              ...caps.filter(c=>/H264/i.test(c.mimeType)),
+              ...caps.filter(c=>/VP9/i.test(c.mimeType)),
+              ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
+            ];
+            if(ordered.length) tx.setCodecPreferences(ordered);
+          }catch(_){}
+        }
+      });
+
+      // offerToReceiveAudio/Video:false — tells browser this is a send-only stream
+      const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
+      await pc.setLocalDescription(offer);
+      await roomRef.child('offer').set({sdp:offer.sdp,type:offer.type});
+
+      // Answer listener — attach once, store ref for cleanup
+      const answerRef=roomRef.child('answer');
+      const answerHandler=async s=>{
+        const a=s.val();
+        if(a&&pc&&!pc.currentRemoteDescription){
+          try{ await pc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+        }
+      };
+      answerRef.on('value', answerHandler);
+      fbListeners['answer']={ref:answerRef, event:'value', handler:answerHandler};
+
+      // Guest ICE candidates
+      const guestCandsRef=roomRef.child('cands/guest');
+      const guestCandsHandler=async s=>{
+        const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+      };
+      guestCandsRef.on('child_added', guestCandsHandler);
+      fbListeners['cands_guest']={ref:guestCandsRef, event:'child_added', handler:guestCandsHandler};
+
+    }catch(err){ toast('Stream error: '+err.message); }
+  };
+
+  pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/host').push(e.candidate.toJSON()); };
+
+  // Capture only after video is playing (fixes blank stream)
+  if(!vid.paused && vid.readyState>=2){ await doCapture(); }
+  else { vid.addEventListener('playing', doCapture,{once:true}); try{await vid.play();}catch(_){} }
+}
+
+// Detach stored Firebase RTC listeners
+function _detachRTCListeners(){
+  Object.values(fbListeners).forEach(({ref,event,handler})=>{
+    try{ ref.off(event, handler); }catch(_){}
+  });
+  fbListeners={};
+}
+
+// ── GUEST FLOW ───────────────────────────────────────────────
+function setupGuestFlow(){
+  document.getElementById('upload-ov').style.display='none';
+  document.getElementById('wait-ov').classList.add('show');
+  document.getElementById('wait-msg').textContent='Waiting for host to select a movie…';
+  roomRef.child('videoReady').on('value',async s=>{
+    if(!s.val()) return;
+    if(guestRTCStarted) return; // prevent duplicate RTC from re-fires
+    guestRTCStarted=true;
+    document.getElementById('wait-ov').classList.remove('show');
+    await doGuestRTC();
+  });
+  // Guest can request to pick a movie
+  setupGuestMovieRequest();
+}
+
+async function doGuestRTC(){
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  pc.ontrack=e=>{
+    if(vid.srcObject===e.streams[0])return;
+    vid.srcObject=e.streams[0];
+    vid.volume=0.5;
+    vid.muted=true; // start muted — mobile autoplay policy requires this
+    vid.play().then(()=>{ vid.muted=false; })
+      .catch(()=>{ toast('Tap anywhere to start playback');
+        vid.addEventListener('click',()=>{ vid.muted=false; vid.play().catch(()=>{}); },{once:true}); });
+    bindVideoUI();
+  };
+  pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guest').push(e.candidate.toJSON()); };
+
+  // Retry offer fetch — host may not have written it yet
+  let offer=null;
+  for(let attempt=0; attempt<8; attempt++){
+    const snap=await roomRef.child('offer').once('value');
+    offer=snap.val();
+    if(offer) break;
+    await new Promise(r=>setTimeout(r,1000)); // wait 1s and retry
+  }
+  if(!offer){
+    toast('Could not connect — no offer from host. Please refresh.');
+    guestRTCStarted=false; // allow retry
+    return;
+  }
+
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await roomRef.child('answer').set({sdp:answer.sdp,type:answer.type});
+
+    // Host ICE candidates — clear guest's old cands first, then listen
+    await roomRef.child('cands/guest').remove().catch(()=>{});
+    const hostCandsRef=roomRef.child('cands/host');
+    const hostCandsHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    hostCandsRef.on('child_added', hostCandsHandler);
+    fbListeners['cands_host']={ref:hostCandsRef, event:'child_added', handler:hostCandsHandler};
+  }catch(err){
+    toast('Connection error: '+err.message);
+    guestRTCStarted=false;
+  }
+}
+
+function setupPCEvents(){
+  pc.oniceconnectionstatechange=()=>{
+    const st=pc.iceConnectionState;
+    if(st==='failed'){ toast('Connection failed — retrying…'); pc.restartIce(); }
+    if(st==='disconnected'){
+      toast('Connection interrupted…');
+      setTimeout(()=>{ if(pc&&pc.iceConnectionState==='disconnected') pc.restartIce(); },3000);
+    }
+    if(st==='connected'||st==='completed'){ reconnecting=false; }
+  };
+  pc.onconnectionstatechange=()=>{
+    if(pc.connectionState==='connected') applyBitrateLimit();
+    if(pc.connectionState==='failed') attemptReconnect();
+  };
+}
+
+// Applies bitrate ceiling + maintain-resolution degradation preference once the
+// peer connection is live. Uses setParameters() on EXISTING encoding objects
+// (modify-in-place, not replace) which is the only pattern browsers accept.
+function applyBitrateLimit(){
+  if(!pc) return;
+  pc.getSenders().forEach(s=>{
+    if(!s.track) return;
+    const p=s.getParameters();
+    if(!p.encodings||!p.encodings.length) return;
+    const isVideo=s.track.kind==='video';
+    p.encodings.forEach(enc=>{
+      if(isVideo){
+        enc.maxBitrate=8*1000*1000;                    // 8 Mbps ceiling
+        enc.degradationPreference='maintain-framerate'; // movies: smooth motion matters more than sharpness — let resolution dip under congestion instead of stuttering
+      } else {
+        enc.maxBitrate=192*1000;                       // 192 kbps audio
+      }
+    });
+    s.setParameters(p).catch(()=>{});
+  });
+}
+
+// ── PLAYLIST ────────────────────────────────────────────────
+function addToPlaylist(file){
+  const url=URL.createObjectURL(file);
+  playlist.push({name:file.name, url, file});
+  renderPlaylist();
+}
+function renderPlaylist(){
+  const list=document.getElementById('pl-list');
+  if(!playlist.length){ list.innerHTML='<div class="pl-empty">No files added yet</div>'; return; }
+  list.innerHTML='';
+  playlist.forEach((item,i)=>{
+    const div=document.createElement('div');
+    div.className='pl-item'+(i===currentIdx?' playing':'');
+    div.innerHTML=`
+      <span class="pl-num">${i===currentIdx?'▶':i+1}</span>
+      <div class="pl-info">
+        <div class="pl-name">${item.name}</div>
+      </div>
+      <button class="pl-remove" onclick="removeFromPlaylist(${i},event)" title="Remove">✕</button>`;
+    div.addEventListener('click',()=>playIdx(i,true));
+    list.appendChild(div);
+  });
+}
+function removeFromPlaylist(i,e){
+  e.stopPropagation();
+  const wasPlaying = (i === currentIdx);
+  const itemUrl = playlist[i].url;
+  playlist.splice(i,1);
+
+  if(wasPlaying){
+    // Pause and clear video — revoke via itemUrl only (same as vid.src)
+    vid.pause();
+    vid.src=''; vid.srcObject=null; vid.removeAttribute('src');
+    try{ URL.revokeObjectURL(itemUrl); }catch(_){}
+    currentIdx=-1;
+    document.getElementById('prog-fill').style.width='0%';
+    document.getElementById('prog-thumb').style.left='0%';
+    document.getElementById('time-txt').textContent='0:00 / 0:00';
+    document.getElementById('pp-btn').textContent='▶';
+    if(playlist.length===0){
+      document.getElementById('upload-ov').style.display='flex';
+      document.getElementById('remove-file-btn').style.display='none';
+      if(pc){ pc.close(); pc=null; }
+      if(roomRef) roomRef.child('videoReady').set(false);
+    } else {
+      const nextIdx = Math.min(i, playlist.length-1);
+      playIdx(nextIdx, true);
+    }
+  } else {
+    // Just revoke URL, adjust index
+    try{ URL.revokeObjectURL(itemUrl); }catch(_){}
+    if(i < currentIdx) currentIdx--;
+  }
+  renderPlaylist();
+}
+async function playIdx(i, isHost=false){
+  if(i<0||i>=playlist.length)return;
+  const isSwitch = currentIdx!==-1 && currentIdx!==i; // already had a track playing, now switching to a different one
+  currentIdx=i;
+  renderPlaylist();
+  if(isHost&&role==='host'){
+    const isFirstEver = !pc || pc.connectionState==='closed' || pc.connectionState==='failed';
+    if(isSwitch) clearSubtitleState(); // different movie now — old subtitle timing would be wrong
+    await loadVideoFile(playlist[i].file, isFirstEver);
+  }
+}
+function nextTrack(){ if(role==='host'&&playlist.length) playIdx((currentIdx+1)%playlist.length,true); }
+function prevTrack(){ if(role==='host'&&playlist.length) playIdx((currentIdx-1+playlist.length)%playlist.length,true); }
+function togglePlaylist(){
+  const p=document.getElementById('playlist-panel');
+  p.classList.toggle('open');
+}
+
+// ── SETTINGS MENU ───────────────────────────────────────────
+function toggleSettingsMenu(){
+  document.getElementById('settings-menu').classList.toggle('open');
+}
+function closeSettingsMenu(){
+  document.getElementById('settings-menu').classList.remove('open');
+}
+// Click/tap outside the menu closes it
+document.addEventListener('click', e=>{
+  const menu=document.getElementById('settings-menu');
+  const btn=document.getElementById('settings-btn');
+  if(menu.classList.contains('open') && !menu.contains(e.target) && e.target!==btn){
+    closeSettingsMenu();
+  }
+});
+
+// ── SUBTITLES ───────────────────────────────────────────────
+let subtitleCues  = [];      // ACTIVE cues (own or partner's, depending on _showPartnerSub)
+let subDelay      = 0;       // ACTIVE delay — own delay, or partner's delay when showing partner
+let subtitlesOn   = false;
+let subFontSize   = 22;      // px
+let subTextColor  = '#fdf6ec';
+let subBgColor    = '#000000';
+let subBgOpacity  = 70;      // percent
+let subReposition = false;   // drag/pinch mode toggle
+// Own subtitle state — preserved when switching to partner's subtitle
+let _ownSubCues   = [];
+let _ownSubDelay  = 0;
+let _ownSubOn     = false;
+let _ownSubFile   = '';
+// Partner subtitle state — stored when received, only displayed if _showPartnerSub is true
+let _partnerSub   = null;    // {cues, delay, text}
+let _showPartnerSub = false; // toggle: show partner's subtitle instead of own
+let _subTimeOffset  = 0;     // fine-tuning offset for partner subtitle (adjusted via delay buttons)
+// Host time tracking — updated from every control event AND heartbeat tick
+// Lets us estimate the current movie position reliably without depending on vid.currentTime
+let _lastKnownHostTime   = 0;   // host's vid.currentTime at _lastKnownHostTimeAt
+let _lastKnownHostTimeAt = 0;   // Date.now() when we last received host time
+let _lastHostPlaying     = false; // was host playing when they last reported
+
+function toggleSubtitlePanel(){
+  document.getElementById('sub-panel').classList.toggle('open');
+}
+
+// Parses both .srt (00:00:01,000) and .vtt (00:00:01.000) timestamp formats
+function parseSubtitles(text){
+  const cues=[];
+  const norm=text.replace(/\r/g,'').trim();
+  const blocks=norm.split(/\n\n+/);
+  const tsRe=/(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})/;
+
+  const toSeconds=(h,m,s,ms)=>(+h)*3600+(+m)*60+(+s)+(+ms.padEnd(3,'0'))/1000;
+
+  blocks.forEach(block=>{
+    const lines=block.split('\n').filter(l=>l.trim()!=='');
+    if(!lines.length) return;
+    let tsLineIdx=lines.findIndex(l=>tsRe.test(l));
+    if(tsLineIdx===-1) return; // e.g. "WEBVTT" header block — skip
+    const m=lines[tsLineIdx].match(tsRe);
+    const start=toSeconds(m[1],m[2],m[3],m[4]);
+    const end  =toSeconds(m[5],m[6],m[7],m[8]);
+    const textLines=lines.slice(tsLineIdx+1);
+    const cueText=textLines.join('\n').trim();
+    if(cueText) cues.push({start,end,text:cueText});
+  });
+  return cues;
+}
+
+// Custom-rendered captions (drag/pinch require a real DOM element — browsers
+// give zero control over native <track> captions, so we draw these ourselves).
+// Looks up the active cue against currentTime+delay on every frame tick.
+function updateActiveSubtitleCue(){
+  const overlay=document.getElementById('sub-overlay');
+  if(!subtitlesOn || !subtitleCues.length){
+    overlay.classList.remove('show');
+    return;
+  }
+  let t;
+  if(role==='guest' && _lastKnownHostTimeAt > 0){
+    // GUEST: vid.currentTime is stream elapsed time (not movie time).
+    // Instead, estimate host's current movie position from the last control/heartbeat event.
+    // _lastKnownHostTime + elapsed ≈ actual movie time right now at the host side.
+    // Stream latency means the guest sees this a little behind — user fine-tunes with delay buttons.
+    const elapsed = (Date.now() - _lastKnownHostTimeAt) / 1000;
+    t = _lastKnownHostTime + (_lastHostPlaying ? elapsed : 0);
+    // _subTimeOffset is an additional fine-tune in partner mode (set by delay buttons, starts at 0)
+    if(_showPartnerSub) t += _subTimeOffset;
+  } else {
+    // HOST (or guest before first control event): vid.currentTime IS the movie time
+    t = vid.currentTime + (_showPartnerSub ? _subTimeOffset : 0);
+  }
+  const active=subtitleCues.find(c=> t>=(c.start+subDelay) && t<=(c.end+subDelay) );
+  const txt=document.getElementById('sub-overlay-text');
+  if(active){
+    if(txt.textContent!==active.text) txt.textContent=active.text;
+    overlay.classList.add('show');
+  } else {
+    overlay.classList.remove('show');
+  }
+}
+vid.addEventListener('timeupdate', updateActiveSubtitleCue);
+
+function hexToRgba(hex,alpha){
+  const h=hex.replace('#','');
+  const r=parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function applySubStyle(){
+  const txt=document.getElementById('sub-overlay-text');
+  txt.style.fontSize=subFontSize+'px';
+  txt.style.color=subTextColor;
+  txt.style.background=hexToRgba(subBgColor,subBgOpacity/100);
+  document.getElementById('sub-fontsize-val').textContent=subFontSize+'px';
+  document.getElementById('sub-opacity-val').textContent=subBgOpacity+'%';
+}
+
+function updateSubtitleUI(){
+  // When showing partner subtitle, the delay buttons adjust _subTimeOffset (local calibration)
+  // When showing own subtitle, they adjust subDelay (synced to partner)
+  const displayVal = _showPartnerSub ? _subTimeOffset : subDelay;
+  document.getElementById('sub-delay-val').textContent=
+    (displayVal>=0?'+':'')+displayVal.toFixed(1)+'s';
+  document.getElementById('sub-switch-btn').classList.toggle('on',subtitlesOn);
+  document.getElementById('sub-toggle-btn').style.opacity=subtitlesOn?'1':'0.85';
+  document.getElementById('sub-partner-switch').classList.toggle('on',_showPartnerSub);
+}
+
+// Opening the native file picker backgrounds the tab momentarily; on some
+// (mostly mobile) browsers this can cause a large blob-backed video to lose
+// its decode buffer. Pausing first avoids fighting that transition, and we
+// resume cleanly afterward — whether a file was picked or the dialog was canceled.
+let subPickerWasPlaying = false;
+let subPickerFocusHandler = null;
+
+function openSubtitlePicker(){
+  subPickerWasPlaying = !vid.paused;
+  if(subPickerWasPlaying) vid.pause();
+
+  // Most browsers don't fire 'change' when the picker is canceled — fall back
+  // to resuming on window focus return, with a short delay so a real file
+  // selection's 'change' event gets first chance to handle the resume itself.
+  subPickerFocusHandler = ()=>{
+    setTimeout(()=>{
+      if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+      subPickerFocusHandler=null;
+    },400);
+  };
+  window.addEventListener('focus', subPickerFocusHandler, {once:true});
+
+  document.getElementById('sub-file-input').click();
+}
+
+document.getElementById('sub-file-input').addEventListener('change', async e=>{
+  // A real selection happened — the focus fallback isn't needed for this round
+  if(subPickerFocusHandler){ window.removeEventListener('focus', subPickerFocusHandler); subPickerFocusHandler=null; }
+
+  const file=e.target.files[0];
+  e.target.value='';
+  if(!file){
+    if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+    return;
+  }
+  try{
+    const text=await file.text();
+    const cues=parseSubtitles(text);
+    if(!cues.length){ toast('Could not read that subtitle file ⚠️'); return; }
+    // Always save to own-subtitle state regardless of current display mode
+    _ownSubCues  = cues;
+    _ownSubDelay = 0;
+    _ownSubOn    = true;
+    _ownSubFile  = file.name;
+    if(!_showPartnerSub){
+      // Not showing partner's subtitle — apply to active display
+      subtitleCues=cues;
+      subDelay=0;
+      subtitlesOn=true;
+      applySubStyle();
+      updateActiveSubtitleCue();
+      document.getElementById('sub-filename').textContent=file.name;
+      document.getElementById('sub-remove-btn').style.display='inline-block';
+    }
+    updateSubtitleUI();
+    toast('Subtitles loaded ✓');
+    // Sync to partner — include hostTime so guest can calibrate their stream offset
+    if(roomRef) roomRef.child('subtitleSync').set({
+      text, delay:0, on:true, sender:myName, sid:sessionId, ts:Date.now(),
+      hostTime: vid.currentTime   // guest uses this to compute _subTimeOffset
+    }).catch(()=>{});
+  }catch(err){ toast('Subtitle error: '+err.message); }
+  finally{
+    if(subPickerWasPlaying){ subPickerWasPlaying=false; vid.play().catch(()=>{}); }
+  }
+});
+
+function toggleSubtitles(){
+  if(!subtitleCues.length){ toast('Load a subtitle file first'); return; }
+  subtitlesOn=!subtitlesOn;
+  updateActiveSubtitleCue();
+  updateSubtitleUI();
+  // Sync on/off state to partner
+  if(roomRef) roomRef.child('subtitleSync').update({on:subtitlesOn, sid:sessionId, ts:Date.now()}).catch(()=>{});
+}
+
+function adjustSubDelay(delta){
+  if(!subtitleCues.length){ toast('Load a subtitle file first'); return; }
+  if(_showPartnerSub){
+    // Adjust local stream calibration only — not synced to Firebase
+    _subTimeOffset=Math.round((_subTimeOffset+delta)*10)/10;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+  } else {
+    subDelay=Math.round((subDelay+delta)*10)/10;
+    _ownSubDelay=subDelay; // keep own state in sync
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+    if(roomRef) roomRef.child('subtitleSync').update({delay:subDelay, sid:sessionId, ts:Date.now()}).catch(()=>{});
+  }
+}
+
+function resetSubDelay(){
+  if(!subtitleCues.length) return;
+  if(_showPartnerSub){
+    _subTimeOffset=0;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+  } else {
+    subDelay=0; _ownSubDelay=0;
+    updateActiveSubtitleCue();
+    updateSubtitleUI();
+    if(roomRef) roomRef.child('subtitleSync').update({delay:0, sid:sessionId, ts:Date.now()}).catch(()=>{});
+  }
+}
+
+function adjustSubFontSize(delta){
+  subFontSize=Math.max(12,Math.min(64,subFontSize+delta));
+  applySubStyle();
+}
+function setSubTextColor(hex){ subTextColor=hex; applySubStyle(); }
+function setSubBgColor(hex){ subBgColor=hex; applySubStyle(); }
+function setSubBgOpacity(val){ subBgOpacity=+val; applySubStyle(); }
+
+function resetSubStyle(){
+  subFontSize=22; subTextColor='#fdf6ec'; subBgColor='#000000'; subBgOpacity=70;
+  document.getElementById('sub-color-input').value=subTextColor;
+  document.getElementById('sub-bg-input').value=subBgColor;
+  document.getElementById('sub-opacity-input').value=subBgOpacity;
+  applySubStyle();
+  const ov=document.getElementById('sub-overlay');
+  ov.style.left=''; ov.style.top=''; ov.style.bottom='9%'; ov.style.transform='translateX(-50%)';
+  ov.dataset.posSet='0';
+}
+
+function toggleSubReposition(){
+  subReposition=!subReposition;
+  document.getElementById('sub-overlay').classList.toggle('reposition-mode',subReposition);
+  document.getElementById('sub-reposition-switch').classList.toggle('on',subReposition);
+}
+
+function clearSubtitleState(){
+  subtitleCues=[]; subDelay=0; subtitlesOn=false;
+  _ownSubCues=[]; _ownSubDelay=0; _ownSubOn=false; _ownSubFile='';
+  _partnerSub=null; _showPartnerSub=false; _subTimeOffset=0;
+  document.getElementById('sub-overlay').classList.remove('show');
+  document.getElementById('sub-filename').textContent='No subtitle loaded';
+  document.getElementById('sub-remove-btn').style.display='none';
+  updateSubtitleUI();
+}
+
+function removeSubtitle(){
+  clearSubtitleState();
+  toast('Subtitles removed');
+  if(roomRef) roomRef.child('subtitleSync').set({
+    text:null, on:false, sender:myName, sid:sessionId, ts:Date.now()
+  }).catch(()=>{});
+}
+
+// Downloads the partner's subtitle file as a .srt file to the user's device.
+function downloadPartnerSubtitle(){
+  if(!_partnerSub || !_partnerSub.text){ toast('No partner subtitle available to download'); return; }
+  // Download the file
+  const blob=new Blob([_partnerSub.text],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='partner-subtitle.srt';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  // Also load it as own subtitle automatically
+  const cues=parseSubtitles(_partnerSub.text);
+  if(cues.length){
+    _ownSubCues=cues; _ownSubDelay=0; _ownSubOn=true; _ownSubFile='partner-subtitle.srt';
+    if(!_showPartnerSub){
+      subtitleCues=cues; subDelay=0; subtitlesOn=true;
+      applySubStyle(); updateActiveSubtitleCue();
+      document.getElementById('sub-filename').textContent='partner-subtitle.srt';
+      document.getElementById('sub-remove-btn').style.display='inline-block';
+    }
+    updateSubtitleUI();
+  }
+  toast('Subtitle downloaded and loaded ✓');
+}
+// Full control (delay, style, position) always belongs to each person individually.
+// When showing partner subtitle, delay buttons adjust local stream calibration only.
+function toggleShowPartnerSub(){
+  _showPartnerSub=!_showPartnerSub;
+  if(_showPartnerSub){
+    // Save current own state before switching
+    _ownSubCues  = subtitleCues.slice();
+    _ownSubDelay = subDelay;
+    _ownSubOn    = subtitlesOn;
+    _ownSubFile  = document.getElementById('sub-filename').textContent;
+    if(_partnerSub && _partnerSub.cues.length){
+      // Apply stored partner subtitle — reset fine-tune offset so stale
+      // adjustments from a previous session never carry over
+      _subTimeOffset = 0;
+      subtitleCues = _partnerSub.cues;
+      subDelay     = _partnerSub.delay || 0;
+      subtitlesOn  = true;
+      document.getElementById('sub-filename').textContent = 'Partner\'s subtitle';
+      document.getElementById('sub-remove-btn').style.display='none';
+      applySubStyle();
+      updateActiveSubtitleCue();
+      toast('Showing partner\'s subtitle');
+    } else {
+      toast('No partner subtitle available yet');
+      _showPartnerSub=false; // revert if nothing to show
+    }
+  } else {
+    // Restore own subtitle state
+    subtitleCues = _ownSubCues;
+    subDelay     = _ownSubDelay;
+    subtitlesOn  = _ownSubOn;
+    _subTimeOffset = 0;
+    document.getElementById('sub-filename').textContent = _ownSubFile||'No subtitle loaded';
+    document.getElementById('sub-remove-btn').style.display = _ownSubCues.length?'inline-block':'none';
+    updateActiveSubtitleCue();
+    toast('Showing your own subtitle');
+  }
+  updateSubtitleUI();
+}
+
+// Drag (1-finger / mouse), pinch-resize (2-finger), and corner-handle resize
+// for the subtitle overlay — active only while "Reposition" is toggled on,
+// so normal video taps/swipes pass straight through the rest of the time.
+(function(){
+  const ov=document.getElementById('sub-overlay');
+  const handle=document.getElementById('sub-resize-handle');
+  const area=()=>document.getElementById('video-area');
+  let mode=null; // 'drag' | 'resize' | 'pinch'
+  let dragOx=0, dragOy=0;
+  let pinchStartDist=0, pinchStartFont=0;
+  let resizeStartY=0, resizeStartFont=0;
+
+  function dist(t){ const dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.sqrt(dx*dx+dy*dy); }
+
+  function lockToAbsolutePosition(){
+    if(ov.dataset.posSet==='1') return;
+    const r=ov.getBoundingClientRect();
+    const pr=area().getBoundingClientRect();
+    ov.style.left=(r.left-pr.left)+'px';
+    ov.style.top=(r.top-pr.top)+'px';
+    ov.style.bottom='auto';
+    ov.style.transform='none';
+    ov.dataset.posSet='1';
+  }
+
+  function startDrag(ex,ey){
+    lockToAbsolutePosition();
+    mode='drag';
+    const r=ov.getBoundingClientRect();
+    const pr=area().getBoundingClientRect();
+    dragOx=ex-(r.left-pr.left); dragOy=ey-(r.top-pr.top);
+  }
+  function doDrag(ex,ey){
+    const a=area(); const pr=a.getBoundingClientRect();
+    const x=Math.max(0,Math.min(ex-pr.left-dragOx, a.offsetWidth-ov.offsetWidth));
+    const y=Math.max(0,Math.min(ey-pr.top-dragOy, a.offsetHeight-ov.offsetHeight));
+    ov.style.left=x+'px'; ov.style.top=y+'px';
+  }
+
+  ov.addEventListener('mousedown', e=>{
+    if(!subReposition || e.button!==0 || e.target===handle) return;
+    e.preventDefault(); startDrag(e.clientX,e.clientY);
+  });
+  ov.addEventListener('touchstart', e=>{
+    if(!subReposition) return;
+    if(e.touches.length===2){
+      e.preventDefault();
+      mode='pinch'; pinchStartDist=dist(e.touches); pinchStartFont=subFontSize;
+    } else if(e.touches.length===1 && e.target!==handle){
+      e.preventDefault();
+      startDrag(e.touches[0].clientX,e.touches[0].clientY);
+    }
+  },{passive:false});
+
+  handle.addEventListener('mousedown', e=>{
+    if(!subReposition) return;
+    e.preventDefault(); e.stopPropagation();
+    mode='resize'; resizeStartY=e.clientY; resizeStartFont=subFontSize;
+  });
+  handle.addEventListener('touchstart', e=>{
+    if(!subReposition) return;
+    e.preventDefault(); e.stopPropagation();
+    mode='resize'; resizeStartY=e.touches[0].clientY; resizeStartFont=subFontSize;
+  },{passive:false});
+
+  document.addEventListener('mousemove', e=>{
+    if(mode==='drag') doDrag(e.clientX,e.clientY);
+    else if(mode==='resize'){
+      const d=e.clientY-resizeStartY;
+      subFontSize=Math.max(12,Math.min(64,Math.round(resizeStartFont+d*0.3)));
+      applySubStyle();
+    }
+  });
+  document.addEventListener('touchmove', e=>{
+    if(mode==='drag' && e.touches.length===1){
+      e.preventDefault(); doDrag(e.touches[0].clientX,e.touches[0].clientY);
+    } else if(mode==='pinch' && e.touches.length===2){
+      e.preventDefault();
+      const ratio=pinchStartDist>0 ? dist(e.touches)/pinchStartDist : 1;
+      subFontSize=Math.max(12,Math.min(64,Math.round(pinchStartFont*ratio)));
+      applySubStyle();
+    } else if(mode==='resize' && e.touches.length===1){
+      e.preventDefault();
+      const d=e.touches[0].clientY-resizeStartY;
+      subFontSize=Math.max(12,Math.min(64,Math.round(resizeStartFont+d*0.3)));
+      applySubStyle();
+    }
+  },{passive:false});
+  document.addEventListener('mouseup', ()=>{ mode=null; });
+  document.addEventListener('touchend', ()=>{ mode=null; pinchStartDist=0; });
+})();
+
+// ── VIDEO UI ────────────────────────────────────────────────
+function bindVideoUI(){
+  vid.removeEventListener('timeupdate', updateProg);
+  vid.addEventListener('timeupdate', updateProg);
+
+  // Use .onplay/.onpause style to avoid stacking multiple listeners across bindVideoUI calls
+  vid.onplay  = ()=>setPPBtn(true);
+  vid.onpause = ()=>setPPBtn(false);
+  vid.onended = ()=>{ if(role==='host') nextTrack(); };
+
+  // Show buffering spinner when seeking/stalled (host local video only)
+  vid.onseeking = ()=>{
+    if(role==='host') document.getElementById('wait-ov').classList.add('show');
+  };
+  vid.onseeked = ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    // After seek settles, ensure play continues and captureStream isn't stalled
+    if(role==='host' && !vid.paused){
+      // Small delay lets the decoder catch up before WebRTC tries to re-capture
+      setTimeout(()=>{ vid.play().catch(()=>{}); }, 120);
+    }
+  };
+  vid.onwaiting = ()=>{
+    if(role==='host') document.getElementById('wait-ov').classList.add('show');
+  };
+  vid.oncanplay = ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+  };
+
+  document.getElementById('pp-btn').textContent = vid.paused ? '▶' : '⏸';
+  document.getElementById('mute-btn').textContent = vid.muted ? '🔇' : '🔊'; // sync mute icon to actual state
+
+  // Progress bar is interactive for both host and guest
+  const progWrap = document.getElementById('prog-wrap');
+  progWrap.style.cursor = 'pointer';
+  progWrap.style.pointerEvents = 'auto';
+}
+
+let progSyncTimer=0;
+function updateProg(){
+  if(!vid.duration || !isFinite(vid.duration)) return;
+  const p=(vid.currentTime/vid.duration)*100;
+  document.getElementById('prog-fill').style.width=p+'%';
+  document.getElementById('prog-thumb').style.left=p+'%';
+  document.getElementById('time-txt').textContent=fmt(vid.currentTime)+' / '+fmt(vid.duration);
+  // Host: push time update every 5s so guest progress bar stays in sync
+  if(role==='host' && !syncing){
+    const now=Date.now();
+    if(now-progSyncTimer>5000){
+      progSyncTimer=now;
+      sendCtrl('seek'); // reuse seek action to carry time+duration
+    }
+  }
+}
+function setPPBtn(pl){ document.getElementById('pp-btn').textContent=pl?'⏸':'▶'; }
+
+document.getElementById('prog-wrap').addEventListener('click',e=>{
+  if(!vid.duration || !isFinite(vid.duration)) return;
+  const r=e.currentTarget.getBoundingClientRect();
+  const frac=(e.clientX-r.left)/r.width;
+  if(role==='host'){
+    doSeek(frac * vid.duration);
+  } else {
+    // Guest sends a seek-request by fraction; host converts to real time
+    sendCtrl('seek-req', {frac});
+  }
+});
+
+// Central seek function (host only) — sends ctrl AFTER seeked fires so time is accurate
+function doSeek(time){
+  const wasPlaying = !vid.paused;
+  const clampedTime = Math.max(0, Math.min(time, vid.duration||0));
+  vid.currentTime = clampedTime;
+  vid.addEventListener('seeked', function onSeeked(){
+    vid.removeEventListener('seeked', onSeeked);
+    document.getElementById('wait-ov').classList.remove('show');
+    sendCtrl('seek');
+    if(wasPlaying) setTimeout(()=>{ vid.play().catch(()=>{}); }, 100);
+  }, {once:true});
+}
+
+// ── PLAYBACK CONTROL SYNC ───────────────────────────────────
+let syncing=false;
+function watchControl(){
+  roomRef.child('ctrl').on('value',s=>{
+    const d=s.val(); if(!d) return;
+
+    // HOST: execute commands from guest
+    if(role==='host' && d.by==='guest'){
+      syncing=true;
+      if(d.action==='play'){
+        vid.play().catch(()=>{});
+      } else if(d.action==='pause'){
+        vid.pause();
+      } else if(d.action==='seek-req'){
+        // Guest requested seek by fraction
+        if(vid.duration && isFinite(vid.duration)) doSeek(d.frac * vid.duration);
+      } else if(d.action==='skip-req'){
+        // Guest requested skip by delta seconds
+        if(vid.duration && isFinite(vid.duration)) doSeek(vid.currentTime + d.delta);
+      }
+      setTimeout(()=>syncing=false,400);
+      return;
+    }
+
+    // GUEST: receive host state updates
+    if(role==='guest' && d.by==='host'){
+      syncing=true;
+      // Update host time tracking — used for reliable subtitle sync regardless of vid.currentTime
+      if(typeof d.time==='number' && isFinite(d.time)){
+        const deliveryLag = (Date.now() - d.ts) / 1000;
+        _lastKnownHostTime   = d.time + deliveryLag;
+        _lastKnownHostTimeAt = Date.now();
+        _lastHostPlaying     = (d.action==='play' || d.action==='tick');
+      }
+      if(d.action==='play'){
+        _lastHostPlaying=true;
+        if(vid.srcObject) vid.play().catch(()=>{});
+        else { vid.currentTime=d.time+(Date.now()-d.ts)/1000; vid.play().catch(()=>{}); }
+      } else if(d.action==='pause'){
+        _lastHostPlaying=false;
+        vid.pause();
+        if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+      } else if(d.action==='seek'){
+        // Host moved — update guest progress display (stream can't seek, just update UI)
+        if(!vid.srcObject && isFinite(vid.duration)) vid.currentTime=d.time;
+        if(d.duration && isFinite(d.duration)){
+          const p=(d.time/d.duration)*100;
+          document.getElementById('prog-fill').style.width=p+'%';
+          document.getElementById('prog-thumb').style.left=p+'%';
+          document.getElementById('time-txt').textContent=fmt(d.time)+' / '+fmt(d.duration);
+        }
+      }
+      setTimeout(()=>syncing=false,400);
+    }
+  });
+}
+
+function sendCtrl(action, extra={}){
+  if(!roomRef) return;
+  roomRef.child('ctrl').set({
+    action, time:vid.currentTime, duration:vid.duration||0,
+    ts:Date.now(), by:role, ...extra
+  });
+}
+
+function togglePlay(){
+  if(role==='host'){
+    if(vid.paused){ vid.play(); sendCtrl('play'); }
+    else { vid.pause(); sendCtrl('pause'); }
+  } else {
+    // Guest sends play/pause request to host
+    sendCtrl(vid.paused?'play':'pause');
+  }
+}
+
+function skip(s){
+  if(role==='host'){
+    if(vid.duration && isFinite(vid.duration)) doSeek(vid.currentTime + s);
+  } else {
+    // Guest sends skip-req with delta
+    sendCtrl('skip-req', {delta:s});
+    // Show gesture hint locally
+    showGest(s<0?'left':'right', (s<0?'⏪ ':'⏩ +')+(Math.abs(s))+'s');
+  }
+}
+function toggleMute(){ vid.muted=!vid.muted; document.getElementById('mute-btn').textContent=vid.muted?'🔇':'🔊'; }
+function goFullscreen(){
+  if(!document.fullscreenElement) document.getElementById('video-area').requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+}
+
+// ── CHAT ────────────────────────────────────────────────────
+function watchChat(){
+  roomRef.child('msgs').on('child_added',s=>{
+    const d=s.val();
+    renderMsg(d);
+    if(!chatOpen&&d.sender!==myName){
+      unread++;
+      const b=document.getElementById('cbadge');
+      b.textContent=unread; b.classList.add('show');
+      showMsgPopup(d);
+    }
+  });
+}
+
+function showMsgPopup(d){
+  const el=document.getElementById('msg-popup');
+  document.getElementById('popup-sender').textContent=d.sender;
+  document.getElementById('popup-body').textContent=d.type==='voice'?'🎤 Voice message':d.text||'';
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'),5000);
+}
+
+function renderMsg(d){
+  const wrap=document.getElementById('chat-msgs');
+  const div=document.createElement('div');
+  const isMe=d.sender===myName;
+  div.className='msg '+(isMe?'me':'them');
+  const nm=document.createElement('div'); nm.className='msg-name'; nm.textContent=d.sender;
+  const ts=document.createElement('div'); ts.className='msg-time';
+  ts.textContent=new Date(d.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+
+  if(d.type==='voice'){
+    const bub=buildVoiceBubble(d,isMe);
+    div.append(nm,bub,ts);
+  } else {
+    const bub=document.createElement('div'); bub.className='msg-bub'; bub.textContent=d.text;
+    div.append(nm,bub,ts);
+  }
+  wrap.appendChild(div);
+  wrap.scrollTop=wrap.scrollHeight;
+}
+
+function buildVoiceBubble(d,isMe){
+  const bub=document.createElement('div'); bub.className='msg-voice-bub';
+  const audio=new Audio(d.audio); let playing=false;
+  const playBtn=document.createElement('button'); playBtn.className='v-play-btn'; playBtn.textContent='▶';
+  const wave=document.createElement('div'); wave.className='v-waveform';
+  const fill=document.createElement('div'); fill.className='v-wave-fill'; wave.appendChild(fill);
+  const dur=document.createElement('span'); dur.className='v-dur';
+  dur.textContent=fmt(d.duration||0);
+  audio.addEventListener('loadedmetadata',()=>{ if(!d.duration) dur.textContent=fmt(audio.duration); });
+  audio.addEventListener('timeupdate',()=>{
+    if(audio.duration){ fill.style.width=(audio.currentTime/audio.duration*100)+'%'; dur.textContent=fmt(audio.currentTime); }
+  });
+  audio.addEventListener('ended',()=>{ playing=false; playBtn.textContent='▶'; fill.style.width='0%'; dur.textContent=fmt(d.duration||audio.duration||0); });
+  playBtn.onclick=e=>{
+    e.stopPropagation();
+    if(playing){audio.pause();playBtn.textContent='▶';}else{audio.play();playBtn.textContent='⏸';}
+    playing=!playing;
+  };
+  bub.append(playBtn,wave,dur);
+  return bub;
+}
+
+function sendMsg(){
+  const inp=document.getElementById('chat-in');
+  const txt=inp.value.trim(); if(!txt||!roomRef)return;
+  roomRef.child('msgs').push({sender:myName,text:txt,type:'text',ts:Date.now()});
+  inp.value='';
+}
+
+// ── VOICE RECORDING ─────────────────────────────────────────
+async function startRec(e){ if(e)e.preventDefault(); if(isRec)return;
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaRec=new MediaRecorder(stream,{mimeType:MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/ogg'});
+    audioChunks=[]; isRec=true; recStart=Date.now();
+    mediaRec.ondataavailable=ev=>audioChunks.push(ev.data);
+    mediaRec.start();
+    document.getElementById('mic-btn').classList.add('rec');
+    const lbl=document.getElementById('mic-label'); lbl.classList.add('show');
+    recTimerInt=setInterval(()=>{
+      const s=Math.floor((Date.now()-recStart)/1000);
+      lbl.textContent=fmt(s); if(s>=60)stopRec();
+    },1000);
+  }catch(err){toast('Microphone access denied');}
+}
+function stopRec(e){
+  if(e)e.preventDefault();
+  if(!isRec||!mediaRec)return;
+  clearInterval(recTimerInt);
+  const duration=(Date.now()-recStart)/1000;
+  document.getElementById('mic-btn').classList.remove('rec');
+  document.getElementById('mic-label').classList.remove('show');
+  document.getElementById('mic-label').textContent='';
+  mediaRec.onstop=async()=>{
+    const blob=new Blob(audioChunks,{type:mediaRec.mimeType});
+    if(blob.size>700000){toast('Voice message too long (max ~30s)');return;}
+    const reader=new FileReader();
+    reader.onload=()=>{
+      roomRef.child('msgs').push({sender:myName,type:'voice',audio:reader.result,duration,ts:Date.now()});
+    };
+    reader.readAsDataURL(blob);
+    mediaRec.stream.getTracks().forEach(t=>t.stop());
+  };
+  mediaRec.stop(); isRec=false;
+}
+
+// ── GUEST MOVIE REQUEST ──────────────────────────────────────
+let guestCanPickMovie = false;
+
+function setupGuestMovieRequest(){
+  // Show the request button for guest
+  document.getElementById('guest-req-btn').style.display='flex';
+
+  // Listen for host approval/denial
+  roomRef.child('movieRequest').on('value', s=>{
+    const d=s.val();
+    if(!d) return;
+    if(d.status==='approved' && !guestCanPickMovie){
+      guestCanPickMovie=true;
+      toast('Host approved! Pick your movie 🎬', 3500);
+      // Trigger file picker
+      document.getElementById('guest-file-input').click();
+      document.getElementById('guest-req-btn').textContent='🎬 Pick Movie';
+      document.getElementById('guest-req-btn').disabled=false;
+    } else if(d.status==='denied'){
+      toast('Request denied by host 😅');
+      document.getElementById('guest-req-btn').disabled=false;
+      document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
+      guestCanPickMovie=false;
+      // Clear the request node
+      roomRef.child('movieRequest').remove();
+    }
+  });
+
+  // Wire guest file input
+  document.getElementById('guest-file-input').addEventListener('change', async e=>{
+    const file=e.target.files[0]; if(!file)return;
+    document.getElementById('guest-file-input').value='';
+    // Reset button
+    document.getElementById('guest-req-btn').textContent='🎬 Request Movie';
+    guestCanPickMovie=false;
+    // Clear request node
+    roomRef.child('movieRequest').remove();
+    // Guest loads the video locally and sends stream to host via new RTC
+    await guestLoadAndStream(file);
+  });
+}
+
+function guestRequestMovie(){
+  if(guestCanPickMovie){
+    // Already approved — just trigger picker again
+    document.getElementById('guest-file-input').click();
+    return;
+  }
+  const btn=document.getElementById('guest-req-btn');
+  btn.disabled=true;
+  btn.textContent='⏳ Waiting…';
+  roomRef.child('movieRequest').set({status:'pending', from: myName, ts: Date.now()});
+  toast('Request sent to host…');
+}
+
+// Host: watch for guest movie requests
+function watchGuestMovieRequest(){
+  roomRef.child('movieRequest').on('value', s=>{
+    const d=s.val();
+    // Only show popup for a genuinely new pending request (not already handled)
+    if(!d || d.status !== 'pending') {
+      // Hide popup if request was cleared/handled
+      document.getElementById('approve-popup').classList.remove('show');
+      return;
+    }
+    document.getElementById('approve-msg').textContent=`${d.from} wants to pick the next movie`;
+    document.getElementById('approve-popup').classList.add('show');
+  });
+}
+
+function approveGuestRequest(allow){
+  document.getElementById('approve-popup').classList.remove('show');
+  if(allow){
+    roomRef.child('movieRequest').update({status:'approved'});
+    toast(`You approved ${document.getElementById('approve-msg').textContent.split(' ')[0]}'s request`);
+  } else {
+    roomRef.child('movieRequest').update({status:'denied'});
+  }
+}
+
+// Guest loads a local file and streams it to host (reverse of normal flow)
+async function guestLoadAndStream(file){
+  document.getElementById('wait-ov').classList.remove('show');
+  document.getElementById('wait-msg').textContent='Loading your movie…';
+
+  // Show a mini loading indicator
+  document.getElementById('wait-ov').classList.add('show');
+
+  file = prepareVideoFile(file); // shows HandBrake popup for MKV and returns null; passes non-MKV through
+  if(!file){
+    document.getElementById('wait-ov').classList.remove('show');
+    return;
+  }
+
+  if(vid.srcObject){ vid.srcObject=null; }
+  if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+
+  const url = URL.createObjectURL(file);
+  vid.src=url; vid.volume=0.5; vid.muted=false; // 50% default; muted=false lets captureStream capture audio
+
+  vid.onerror=()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    toast('⚠️ Browser can\'t play this format. Try MP4 or WebM.');
+  };
+
+  vid.addEventListener('loadeddata', async ()=>{
+    document.getElementById('wait-ov').classList.remove('show');
+    bindVideoUI();
+    // Signal host that guest has a video ready
+    await roomRef.child('guestVideo').set({ready:true, ts:Date.now()});
+    // Guest now acts as streamer — set up RTC offer from guest side
+    await doGuestStreamRTC();
+  }, {once:true});
+
+  vid.load();
+  try{ await vid.play(); }catch(_){}
+}
+
+// Guest streams to host (guest as sender)
+async function doGuestStreamRTC(){
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  const capture=vid.captureStream||vid.mozCaptureStream;
+  if(!capture){ toast('Streaming requires Chrome or Edge.'); return; }
+
+  // Clear old cands + answers so host gets a clean session
+  await Promise.all([
+    roomRef.child('cands/guestStream').remove().catch(()=>{}),
+    roomRef.child('cands/hostWatch').remove().catch(()=>{}),
+    roomRef.child('guestAnswer').remove().catch(()=>{}),
+  ]);
+  // Reset host watch guard so host can receive the new stream
+  hostWatchStarted=false;
+
+  try{
+    localStream=capture.call(vid,30); // lock capture to 30fps
+    if(!localStream.getTracks().length){ await new Promise(r=>setTimeout(r,500)); localStream=capture.call(vid,30); }
+    if(!localStream.getTracks().length){ toast('No video tracks found.'); return; }
+
+    // addTrack — universally compatible with all browsers including mobile.
+    localStream.getTracks().forEach(t=> pc.addTrack(t, localStream));
+
+    // Optionally prefer H.264 — silent no-op if unsupported.
+    pc.getTransceivers().forEach(tx=>{
+      if(tx.sender.track?.kind==='video' && tx.setCodecPreferences && RTCRtpSender.getCapabilities){
+        try{
+          const caps=RTCRtpSender.getCapabilities('video').codecs;
+          const ordered=[
+            ...caps.filter(c=>/H264/i.test(c.mimeType)),
+            ...caps.filter(c=>/VP9/i.test(c.mimeType)),
+            ...caps.filter(c=>!/H264|VP9/i.test(c.mimeType))
+          ];
+          if(ordered.length) tx.setCodecPreferences(ordered);
+        }catch(_){}
+      }
+    });
+
+    const offer=await pc.createOffer({offerToReceiveAudio:false,offerToReceiveVideo:false});
+    await pc.setLocalDescription(offer);
+    await roomRef.child('guestOffer').set({sdp:offer.sdp,type:offer.type});
+
+    // guestAnswer listener
+    const guestAnswerRef=roomRef.child('guestAnswer');
+    const guestAnswerHandler=async s=>{
+      const a=s.val();
+      if(a&&pc&&!pc.currentRemoteDescription){
+        try{ await pc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+      }
+    };
+    guestAnswerRef.on('value', guestAnswerHandler);
+    fbListeners['guestAnswer']={ref:guestAnswerRef, event:'value', handler:guestAnswerHandler};
+
+    // guestStream ICE candidates from host
+    const guestStreamRef=roomRef.child('cands/guestStream');
+    const guestStreamHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    guestStreamRef.on('child_added', guestStreamHandler);
+    fbListeners['cands_guestStream']={ref:guestStreamRef, event:'child_added', handler:guestStreamHandler};
+
+    pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/hostWatch').push(e.candidate.toJSON()); };
+  }catch(err){ toast('Stream error: '+err.message); }
+}
+
+// Host: watch for guest-initiated stream
+function watchGuestStream(){
+  roomRef.child('guestVideo').on('value', async s=>{
+    if(!s.val()?.ready) return;
+    if(hostWatchStarted) return; // prevent duplicate connections
+    hostWatchStarted=true;
+    toast('Partner is streaming their movie! 🎬');
+    await doHostWatchGuestRTC();
+  });
+}
+
+async function doHostWatchGuestRTC(){
+  _detachRTCListeners();
+  if(pc){ pc.close(); pc=null; }
+  pc=new RTCPeerConnection(ICE);
+  setupPCEvents();
+
+  pc.ontrack=e=>{
+    if(vid.srcObject===e.streams[0])return;
+    if(vid.src && vid.src.startsWith('blob:')) URL.revokeObjectURL(vid.src);
+    vid.src=''; vid.removeAttribute('src');
+    vid.srcObject=e.streams[0];
+    vid.volume=0.5;
+    vid.muted=true; // start muted — mobile autoplay policy requires this
+    vid.play().then(()=>{ vid.muted=false; })
+      .catch(()=>{ toast('Tap anywhere to start playback');
+        vid.addEventListener('click',()=>{ vid.muted=false; vid.play().catch(()=>{}); },{once:true}); });
+    bindVideoUI();
+    document.getElementById('remove-file-btn').style.display='none';
+  };
+
+  pc.onicecandidate=e=>{ if(e.candidate)roomRef.child('cands/guestStream').push(e.candidate.toJSON()); };
+
+  // Clear old cands before new session
+  await roomRef.child('cands/guestStream').remove().catch(()=>{});
+  await roomRef.child('cands/hostWatch').remove().catch(()=>{});
+
+  // Retry offer fetch
+  let offer=null;
+  for(let attempt=0; attempt<8; attempt++){
+    const snap=await roomRef.child('guestOffer').once('value');
+    offer=snap.val();
+    if(offer) break;
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  if(!offer){ toast('Guest stream offer not found.'); hostWatchStarted=false; return; }
+
+  try{
+    await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer=await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    await roomRef.child('guestAnswer').set({sdp:answer.sdp,type:answer.type});
+
+    const hostWatchRef=roomRef.child('cands/hostWatch');
+    const hostWatchHandler=async s=>{
+      const c=s.val(); if(c&&pc)try{await pc.addIceCandidate(new RTCIceCandidate(c));}catch(_){}
+    };
+    hostWatchRef.on('child_added', hostWatchHandler);
+    fbListeners['cands_hostWatch']={ref:hostWatchRef, event:'child_added', handler:hostWatchHandler};
+  }catch(err){ toast('Host watch error: '+err.message); hostWatchStarted=false; }
+}
+function toggleChat(){
+  chatOpen=!chatOpen;
+  document.getElementById('chat-panel').classList.toggle('open',chatOpen);
+  if(chatOpen){
+    unread=0;
+    const b=document.getElementById('cbadge'); b.textContent='0'; b.classList.remove('show');
+    document.getElementById('msg-popup').classList.remove('show');
+    setTimeout(()=>{ document.getElementById('chat-msgs').scrollTop=9999; },100);
+  }
+}
+
+// ── LIVE CAMERA FEED (bidirectional — WhatsApp-style) ─────────
+let camPc            = null;
+let localCamStream   = null;
+let camRole          = null;   // 'requester' | 'acceptor' | null
+let camFbListeners   = {};
+let camSignalWatching= false;
+let camMicMuted      = false;
+let camVideoOff      = false;
+let camSpeakerMuted  = false;
+let camPreMinSize    = null;
+
+const camRemoteEl = document.getElementById('cam-remote');
+const camSelfEl   = document.getElementById('cam-self');
+const camWindow   = document.getElementById('cam-window');
+const camConnEl   = document.getElementById('cam-connecting');
+const camReqPop   = document.getElementById('cam-req-popup');
+
+/* ── helpers ──────────────────────────────────────────────── */
+function _detachCamListeners(){
+  Object.values(camFbListeners).forEach(({ref,event,handler})=>{
+    try{ ref.off(event,handler); }catch(_){}
+  });
+  camFbListeners={};
+}
+
+function stopCameraFull(sendSignal){
+  clearTimeout(camConnectTimeout);
+  _detachCamListeners();
+  if(camPc){ camPc.close(); camPc=null; }
+  if(localCamStream){ localCamStream.getTracks().forEach(t=>t.stop()); localCamStream=null; }
+  camRemoteEl.srcObject=null;
+  camSelfEl.srcObject=null;
+  camWindow.classList.remove('show','minimized');
+  camRole=null; camMicMuted=false; camVideoOff=false; camSpeakerMuted=false;
+  setLiveFeedIcon('📷');
+  document.getElementById('cam-mic-btn').textContent='🎤';
+  document.getElementById('cam-mic-btn').classList.remove('off');
+  document.getElementById('cam-spk-btn').textContent='🔊';
+  document.getElementById('cam-spk-btn').classList.remove('off');
+  document.getElementById('cam-vid-btn').textContent='📷';
+  document.getElementById('cam-vid-btn').classList.remove('off');
+  document.getElementById('cam-self-wrap').style.opacity='1';
+  camConnEl.classList.remove('hide');
+  camReqPop.classList.remove('show');
+  if(sendSignal && roomRef) roomRef.child('camSignal').set({status:'off',ts:Date.now()});
+}
+
+function turnOffCamera(){ stopCameraFull(true); }
+
+function toggleCamMinimize(){
+  const minBtn=document.getElementById('cam-minimize-btn');
+  if(camWindow.classList.contains('minimized')){
+    camWindow.classList.remove('minimized');
+    if(camPreMinSize){ camWindow.style.width=camPreMinSize.w; camWindow.style.height=camPreMinSize.h; }
+    minBtn.textContent='–';
+  } else {
+    camPreMinSize={w:camWindow.style.width||'210px', h:camWindow.style.height||'165px'};
+    camWindow.classList.add('minimized');
+    minBtn.textContent='□';
+  }
+}
+
+/* Mic mute — disables YOUR audio tracks sent to partner */
+function toggleCamMic(){
+  if(!localCamStream) return;
+  camMicMuted=!camMicMuted;
+  localCamStream.getAudioTracks().forEach(t=>t.enabled=!camMicMuted);
+  const btn=document.getElementById('cam-mic-btn');
+  btn.textContent=camMicMuted?'🔇':'🎤';
+  btn.classList.toggle('off',camMicMuted);
+}
+
+/* Speaker mute — silences incoming audio from partner */
+function toggleCamSpeaker(){
+  camSpeakerMuted=!camSpeakerMuted;
+  camRemoteEl.muted=camSpeakerMuted;
+  const btn=document.getElementById('cam-spk-btn');
+  btn.textContent=camSpeakerMuted?'🔕':'🔊';
+  btn.classList.toggle('off',camSpeakerMuted);
+}
+
+/* Camera toggle — disables YOUR video track without ending call */
+function toggleCamVideo(){
+  if(!localCamStream) return;
+  camVideoOff=!camVideoOff;
+  localCamStream.getVideoTracks().forEach(t=>t.enabled=!camVideoOff);
+  const btn=document.getElementById('cam-vid-btn');
+  btn.textContent=camVideoOff?'🙈':'📷';
+  btn.classList.toggle('off',camVideoOff);
+  document.getElementById('cam-self-wrap').style.opacity=camVideoOff?'0.3':'1';
+}
+
+/* ── entry point ──────────────────────────────────────────── */
+// Updates ALL live-call buttons across every category screen (they share the class)
+function setLiveFeedIcon(icon){
+  document.querySelectorAll('.live-feed-btn').forEach(el=>{ el.textContent=icon; });
+}
+
+function toggleLiveFeed(){
+  if(!roomRef){ toast('Join a room first'); return; }
+  if(camRole!==null){ turnOffCamera(); return; }
+  // Send live-call request to partner
+  roomRef.child('camSignal').set({status:'requesting',requester:myName,ts:Date.now()});
+  setLiveFeedIcon('📷⏳');
+  toast('Asking partner to join a live call…');
+}
+
+async function respondCamRequest(accept){
+  camReqPop.classList.remove('show');
+  if(!accept){
+    if(roomRef) roomRef.child('camSignal').update({status:'declined'});
+    return;
+  }
+  await startCamAcceptor();
+}
+
+/* ── shared media helper ──────────────────────────────────── */
+async function getLocalCamera(){
+  try{
+    return await navigator.mediaDevices.getUserMedia({
+      video:{
+        width:{ideal:640, max:960},
+        height:{ideal:480, max:720},
+        frameRate:{ideal:24, max:30}
+        // The live-call window only ever displays at ~210×165px — requesting the
+        // camera's native max resolution (often 1080p+) would just waste upload
+        // bandwidth on detail nobody can see at that size.
+      },
+      audio:{
+        echoCancellation:false, // movie audio playing through speakers shouldn't be treated as "echo" to cancel
+        noiseSuppression:true,  // keep — cleans background hiss, unrelated to movie audio
+        autoGainControl:true    // keep — keeps voice level consistent, unrelated to movie audio
+      }
+    });
+  }catch(err){
+    toast('Camera/mic access denied 🚫');
+    return null;
+  }
+}
+
+/* Caps the live-call feed to a sane ceiling for a small floating video window.
+   Without this, WebRTC's default congestion control can try to push far more
+   bandwidth than a ~210×165px window ever needs — costly and unstable on
+   mobile data across international connections. */
+function applyCamBitrateLimit(){
+  if(!camPc) return;
+  camPc.getSenders().forEach(s=>{
+    if(!s.track) return;
+    const p=s.getParameters();
+    if(!p.encodings||!p.encodings.length) return;
+    const isVideo=s.track.kind==='video';
+    p.encodings.forEach(enc=>{
+      if(isVideo){
+        enc.maxBitrate=600*1000;                        // 600 kbps ceiling — plenty for a small video-call window
+        enc.degradationPreference='maintain-framerate';  // smooth motion + audio matter more than sharpness in a face call
+      } else {
+        enc.maxBitrate=32*1000;                          // 32 kbps audio — voice-only, doesn't need music-grade bitrate
+      }
+    });
+    s.setParameters(p).catch(()=>{});
+  });
+}
+
+/* ── shared RTCPeerConnection factory ─────────────────────── */
+let camConnectTimeout=null;
+function setupCamPC(){
+  if(camPc){ camPc.close(); camPc=null; }
+  camPc=new RTCPeerConnection(ICE);
+
+  // Some mobile browsers never transition ICE state to 'failed' when NAT traversal
+  // can't complete — they just hang in 'checking' forever with no feedback at all.
+  // This hard timeout guarantees the user sees SOMETHING within 18s instead of a
+  // silent freeze that looks like "clicking does nothing."
+  clearTimeout(camConnectTimeout);
+  camConnectTimeout=setTimeout(()=>{
+    if(camPc && camPc.connectionState!=='connected'){
+      toast('Call couldn\'t connect — check your internet and try again 📡');
+      stopCameraFull(true);
+    }
+  }, 18000);
+
+  // When partner's track arrives → show in #cam-remote (NOT #cam-self)
+  camPc.ontrack=e=>{
+    if(e.streams && e.streams[0]){
+      clearTimeout(camConnectTimeout);
+      camRemoteEl.srcObject=e.streams[0];
+      camConnEl.classList.add('hide');
+      setLiveFeedIcon('📷●');
+      // Try plain play; fall back to muted-then-unmute for strict autoplay policies
+      camRemoteEl.play().catch(()=>{
+        camRemoteEl.muted=true;
+        camRemoteEl.play().then(()=>{
+          setTimeout(()=>{ if(!camSpeakerMuted) camRemoteEl.muted=false; },200);
+        }).catch(()=>{});
+      });
+    }
+  };
+
+  camPc.oniceconnectionstatechange=()=>{
+    const s=camPc.iceConnectionState;
+    if(s==='failed'){ clearTimeout(camConnectTimeout); toast('Camera call connection failed — tap 📷 to retry.'); }
+    if(s==='connected'||s==='completed'){ clearTimeout(camConnectTimeout); applyCamBitrateLimit(); }
+  };
+}
+
+/* ── REQUESTER: A clicked Live Feed; B just accepted ────────
+   A creates the offer so B can add tracks and answer.        */
+async function startCamRequester(){
+  camRole='requester';
+  _detachCamListeners();
+
+  // Clear any stale signalling data
+  await Promise.all([
+    roomRef.child('camSignal/offer').remove().catch(()=>{}),
+    roomRef.child('camSignal/answer').remove().catch(()=>{}),
+    roomRef.child('camSignal/cands_req').remove().catch(()=>{}),
+    roomRef.child('camSignal/cands_acc').remove().catch(()=>{}),
+  ]);
+
+  localCamStream=await getLocalCamera();
+  if(!localCamStream){ camRole=null; setLiveFeedIcon('📷'); return; }
+
+  // Show OWN camera in the self-preview inset (#cam-self, mirrored via CSS)
+  camSelfEl.srcObject=localCamStream;
+  camWindow.classList.add('show');
+  setLiveFeedIcon('📷⏳');
+
+  setupCamPC();
+  localCamStream.getTracks().forEach(t=>camPc.addTrack(t,localCamStream));
+
+  // A's ICE → cands_req
+  camPc.onicecandidate=e=>{
+    if(e.candidate && roomRef) roomRef.child('camSignal/cands_req').push(e.candidate.toJSON());
+  };
+
+  // Listen for B's answer
+  const ansRef=roomRef.child('camSignal/answer');
+  const ansHandler=async s=>{
+    const a=s.val();
+    if(a && camPc && !camPc.currentRemoteDescription){
+      try{ await camPc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+    }
+  };
+  ansRef.on('value',ansHandler);
+  camFbListeners['cam_ans']={ref:ansRef,event:'value',handler:ansHandler};
+
+  // Listen for B's ICE → cands_acc
+  const accRef=roomRef.child('camSignal/cands_acc');
+  const accHandler=async s=>{
+    const c=s.val();
+    if(c && camPc) try{ await camPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
+  };
+  accRef.on('child_added',accHandler);
+  camFbListeners['cam_cands_acc']={ref:accRef,event:'child_added',handler:accHandler};
+
+  // Create offer (request to RECEIVE audio+video from B as well)
+  try{
+    const offer=await camPc.createOffer({offerToReceiveAudio:true,offerToReceiveVideo:true});
+    await camPc.setLocalDescription(offer);
+    await roomRef.child('camSignal/offer').set({sdp:offer.sdp,type:offer.type});
+  }catch(err){ toast('Call setup error: '+err.message); }
+}
+
+/* ── ACCEPTOR: B clicked "Turn On" ──────────────────────────
+   B gets camera, then tells A (via status:'accepted'),
+   A writes the offer, B reads it and answers.                */
+async function startCamAcceptor(){
+  camRole='acceptor';
+  _detachCamListeners();
+
+  // Clear stale ICE candidates from any previous cam session before starting new one
+  if(roomRef){
+    await Promise.all([
+      roomRef.child('camSignal/cands_req').remove().catch(()=>{}),
+      roomRef.child('camSignal/cands_acc').remove().catch(()=>{}),
+    ]);
+  }
+
+  localCamStream=await getLocalCamera();
+  if(!localCamStream){
+    if(roomRef) roomRef.child('camSignal').update({status:'declined'});
+    camRole=null;
+    return;
+  }
+
+  // Show OWN camera in the self-preview inset (#cam-self, mirrored via CSS)
+  camSelfEl.srcObject=localCamStream;
+  camWindow.classList.add('show');
+  setLiveFeedIcon('📷⏳');
+
+  setupCamPC();
+  localCamStream.getTracks().forEach(t=>camPc.addTrack(t,localCamStream));
+
+  // B's ICE → cands_acc
+  camPc.onicecandidate=e=>{
+    if(e.candidate && roomRef) roomRef.child('camSignal/cands_acc').push(e.candidate.toJSON());
+  };
+
+  // Listen for A's ICE → cands_req
+  const reqRef=roomRef.child('camSignal/cands_req');
+  const reqHandler=async s=>{
+    const c=s.val();
+    if(c && camPc) try{ await camPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
+  };
+  reqRef.on('child_added',reqHandler);
+  camFbListeners['cam_cands_req']={ref:reqRef,event:'child_added',handler:reqHandler};
+
+  // Signal A to create the offer
+  await roomRef.child('camSignal').update({status:'accepted',ts:Date.now()});
+
+  // Poll for A's offer (A creates it after seeing 'accepted')
+  let offer=null;
+  for(let i=0;i<12;i++){
+    const snap=await roomRef.child('camSignal/offer').once('value');
+    offer=snap.val();
+    if(offer) break;
+    await new Promise(r=>setTimeout(r,1000));
+  }
+  if(!offer){ toast('Call timed out — please try again.'); stopCameraFull(true); return; }
+
+  try{
+    await camPc.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer=await camPc.createAnswer();
+    await camPc.setLocalDescription(answer);
+    await roomRef.child('camSignal/answer').set({sdp:answer.sdp,type:answer.type});
+  }catch(err){ toast('Call answer error: '+err.message); }
+}
+
+/* ── Firebase watcher (called in enterRoom) ────────────────── */
+function watchCamSignal(){
+  if(!roomRef || camSignalWatching) return;
+  camSignalWatching=true;
+  let firstFire=true;
+  roomRef.child('camSignal').on('value',s=>{
+    const d=s.val();
+    // On first listener fire, skip stale states
+    if(firstFire){
+      firstFire=false;
+      if(!d || d.status==='off' || !d.ts) return;
+      if((Date.now()-d.ts)>30000) return;
+    }
+    if(!d) return;
+
+    // Partner is requesting a live call with ME (ignore if already in a call)
+    if(d.status==='requesting' && d.requester!==myName && camRole===null){
+      document.getElementById('cam-req-msg').textContent=
+        `${d.requester} wants to start a live call 📷`;
+      camReqPop.classList.add('show');
+    }
+
+    // B accepted — NOW A creates the offer
+    // Set camRole BEFORE the async call to prevent double-fire if Firebase re-triggers
+    if(d.status==='accepted' && d.requester===myName && camRole===null){
+      camRole='requester';
+      startCamRequester();
+    }
+
+    // Partner declined my request
+    if(d.status==='declined' && d.requester===myName){
+      toast('Partner declined the call 🙅');
+      setLiveFeedIcon('📷');
+      camRole=null;
+    }
+
+    // Either side ended the call
+    if(d.status==='off'){
+      camReqPop.classList.remove('show');
+      if(camRole!==null) stopCameraFull(false);
+      else setLiveFeedIcon('📷');
+    }
+  });
+}
+
+// ── SUBTITLE SYNC (Firebase watcher — receiver side) ─────────
+// Watches roomRef/subtitleSync. When the partner loads, adjusts, or removes
+// subtitles, this fires and applies the change locally.
+// Appearance (font size, colours, position) stays personal — only the content,
+// delay, and on/off state are shared.
+function watchSubtitleSync(){
+  if(!roomRef) return;
+  let firstFire=true;
+  roomRef.child('subtitleSync').on('value', s=>{
+    const d=s.val();
+
+    // First fire: ignore stale data from a previous session
+    if(firstFire){
+      firstFire=false;
+      if(!d || !d.ts) return;
+      if((Date.now()-d.ts)>60000) return;
+    }
+    if(!d) return;
+
+    // Echo guard — ignore our own writes coming back (use sessionId, not name, to be robust against same-name users)
+    if(d.sid && d.sid===sessionId) return;
+
+    // Partner removed subtitles
+    if(!d.text){
+      _partnerSub=null;
+      _lastReceivedSubText='';
+      document.getElementById('sub-download-btn').style.display='none';
+      if(_showPartnerSub){
+        // Revert to own subtitle
+        _showPartnerSub=false;
+        subtitleCues=_ownSubCues; subDelay=_ownSubDelay; subtitlesOn=_ownSubOn;
+        document.getElementById('sub-filename').textContent=_ownSubFile||'No subtitle loaded';
+        document.getElementById('sub-remove-btn').style.display=_ownSubCues.length?'inline-block':'none';
+        updateActiveSubtitleCue();
+        updateSubtitleUI();
+        toast('Partner removed their subtitle');
+      }
+      return;
+    }
+
+    // Partner loaded a new subtitle file
+    if(d.text && d.text!==_lastReceivedSubText){
+      _lastReceivedSubText=d.text;
+      const cues=parseSubtitles(d.text);
+      if(!cues.length) return;
+
+      // _lastKnownHostTime gives the base movie time calibration.
+      // _subTimeOffset starts at 0 — user can fine-tune with delay buttons if stream latency needs adjusting.
+      _subTimeOffset = 0;
+
+      // Store partner subtitle data
+      _partnerSub = {cues, delay: typeof d.delay==='number'?d.delay:0, text:d.text};
+      document.getElementById('sub-download-btn').style.display='inline-block';
+
+      if(_showPartnerSub){
+        // Already in partner mode — apply immediately.
+        // _subTimeOffset stays 0: _lastKnownHostTime already tracks the correct
+        // current movie time. Adding computedOffset here double-counts elapsed time.
+        _subTimeOffset = 0;
+        subtitleCues   = cues;
+        subDelay       = _partnerSub.delay;
+        subtitlesOn    = d.on!==false;
+        applySubStyle();
+        updateActiveSubtitleCue();
+        document.getElementById('sub-filename').textContent='Partner\'s subtitle';
+        document.getElementById('sub-remove-btn').style.display='none';
+        updateSubtitleUI();
+      } else {
+        // Not in partner mode — just notify so they can toggle if they want
+        toast('Partner loaded a subtitle — tap "Show partner subtitle" to see it');
+      }
+      return;
+    }
+
+    // Partner adjusted delay only
+    if(typeof d.delay==='number'){
+      if(_partnerSub) _partnerSub.delay=d.delay;
+      if(_showPartnerSub){
+        subDelay=d.delay;
+        updateActiveSubtitleCue();
+        updateSubtitleUI();
+      }
+    }
+
+    // Partner toggled on/off
+    if(typeof d.on==='boolean' && _showPartnerSub){
+      subtitlesOn=d.on;
+      updateActiveSubtitleCue();
+      updateSubtitleUI();
+    }
+  });
+}
+// (_lastReceivedSubText is declared at the top of the state block to avoid temporal dead zone)
+
+// ── CAMERA WINDOW: DRAG + RESIZE ─────────────────────────────
+(function(){
+  const win=document.getElementById('cam-window');
+  const bar=document.getElementById('cam-titlebar');
+  const rsz=document.getElementById('cam-resize-handle');
+  let mode=null, ox=0, oy=0, sx=0, sy=0, sw=0, sh=0;
+
+  function startDrag(ex,ey){
+    if(win.classList.contains('minimized')){ toggleCamMinimize(); return; }
+    mode='drag';
+    const wr=win.getBoundingClientRect();
+    ox=ex-wr.left; oy=ey-wr.top;
+  }
+  function startResize(ex,ey){
+    mode='resize'; sx=ex; sy=ey; sw=win.offsetWidth; sh=win.offsetHeight;
+  }
+  function onMove(ex,ey){
+    if(mode==='drag'){
+      // Window is position:fixed globally now — clamp to viewport, not video-area
+      const x=Math.max(0,Math.min(ex-ox, window.innerWidth-win.offsetWidth));
+      const y=Math.max(0,Math.min(ey-oy, window.innerHeight-win.offsetHeight));
+      win.style.left=x+'px'; win.style.top=y+'px';
+    } else if(mode==='resize'){
+      win.style.width =Math.max(150,sw+(ex-sx))+'px';
+      win.style.height=Math.max(120,sh+(ey-sy))+'px';
+    }
+  }
+  function onEnd(){ mode=null; }
+
+  bar.addEventListener('mousedown', e=>{ if(e.button!==0)return; e.preventDefault(); startDrag(e.clientX,e.clientY); });
+  rsz.addEventListener('mousedown', e=>{ if(e.button!==0)return; e.preventDefault(); e.stopPropagation(); startResize(e.clientX,e.clientY); });
+  bar.addEventListener('touchstart', e=>{ e.preventDefault(); startDrag(e.touches[0].clientX,e.touches[0].clientY); },{passive:false});
+  rsz.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); startResize(e.touches[0].clientX,e.touches[0].clientY); },{passive:false});
+  document.addEventListener('mousemove', e=>{ if(mode) onMove(e.clientX,e.clientY); });
+  document.addEventListener('touchmove', e=>{ if(mode){ e.preventDefault(); onMove(e.touches[0].clientX,e.touches[0].clientY); }},{passive:false});
+  document.addEventListener('mouseup', onEnd);
+  document.addEventListener('touchend', onEnd);
+})();
+
+
+
+// ── INVITE ───────────────────────────────────────────────────
+// ── TOUCH GESTURES ───────────────────────────────────────────
+const va=document.getElementById('video-area');
+let lastTapL=0, lastTapR=0;
+let swipeStartY=0, swipeStartX=0, swipeSide=null, isSwiping=false;
+let gestHideL, gestHideR;
+const DTAP=300, SWIPE_THRESH=8;
+
+function showGest(side,txt){
+  const el=document.getElementById(side==='left'?'gest-left':'gest-right');
+  el.textContent=txt;
+  el.classList.remove('gest-anim'); void el.offsetWidth; el.classList.add('gest-anim');
+  clearTimeout(side==='left'?gestHideL:gestHideR);
+  const h=setTimeout(()=>el.classList.remove('gest-anim'),900);
+  if(side==='left')gestHideL=h; else gestHideR=h;
+}
+
+function updateHUDs(){
+  const vol=vid.volume;
+  document.getElementById('hud-vol-fill').style.height=(vol*100)+'%';
+  document.getElementById('hud-bri-fill').style.height=((localBrightness/2)*100)+'%';
+}
+
+// Show/hide HUD bars based on swipe activity
+let hudTimer;
+function flashHUD(){
+  document.getElementById('hud-vol').style.opacity='1';
+  document.getElementById('hud-bri').style.opacity='1';
+  clearTimeout(hudTimer);
+  hudTimer=setTimeout(()=>{ document.getElementById('hud-vol').style.opacity='0'; document.getElementById('hud-bri').style.opacity='0'; },1500);
+}
+document.getElementById('hud-vol').style.opacity='0';
+document.getElementById('hud-bri').style.opacity='0';
+document.getElementById('hud-vol').style.transition='opacity 0.4s';
+document.getElementById('hud-bri').style.transition='opacity 0.4s';
+updateHUDs();
+
+va.addEventListener('touchstart',e=>{
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // don't hijack overlay-panel touches
+  const t=e.touches[0];
+  swipeStartY=t.clientY; swipeStartX=t.clientX;
+  swipeSide=t.clientX<va.offsetWidth/2?'left':'right';
+  isSwiping=false;
+},{passive:true});
+
+va.addEventListener('touchmove',e=>{
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // let overlay panels handle their own scroll/touch
+  if(!e.touches.length)return;
+  const t=e.touches[0];
+  const dy=swipeStartY-t.clientY;
+  const dx=Math.abs(t.clientX-swipeStartX);
+  if(!isSwiping && (Math.abs(dy)<SWIPE_THRESH && dx<SWIPE_THRESH)) return;
+  if(Math.abs(dy)>dx){ // vertical swipe
+    isSwiping=true;
+    e.preventDefault();
+    const delta=dy/va.offsetHeight; // positive = swipe up
+    if(swipeSide==='left'){
+      vid.volume=Math.max(0,Math.min(1,vid.volume+delta*1.5));
+      swipeStartY=t.clientY;
+      flashHUD(); updateHUDs();
+      showGest('left','🔊 '+(Math.round(vid.volume*100))+'%');
+    } else {
+      localBrightness=Math.max(0.1,Math.min(2,localBrightness+delta*2));
+      vid.style.filter='brightness('+localBrightness+')';
+      swipeStartY=t.clientY;
+      flashHUD(); updateHUDs();
+      showGest('right','☀️ '+(Math.round(localBrightness*50))+'%');
+    }
+  }
+},{passive:false});
+
+va.addEventListener('touchend',e=>{
+  if(e.target.closest('#cam-window, #chat-panel, #playlist-panel, #sub-panel, #settings-menu, #sub-overlay')) return; // don't trigger tap-to-skip on overlay panels
+  if(isSwiping){isSwiping=false;return;}
+  const t=e.changedTouches[0];
+  const isRight=t.clientX>va.offsetWidth/2;
+  const now=Date.now();
+  if(isRight){
+    if(now-lastTapR<DTAP){
+      skip(10); showGest('right','+10s ⏩'); lastTapR=0;
+    } else {
+      lastTapR=now;
+      if(e.target===va||e.target===vid) showCtrls();
+    }
+  } else {
+    if(now-lastTapL<DTAP){
+      skip(-10); showGest('left','⏪ -10s'); lastTapL=0;
+    } else {
+      lastTapL=now;
+      if(e.target===va||e.target===vid) showCtrls();
+    }
+  }
+},{passive:true});
+
+// ── CONTROLS AUTO-HIDE (10s) ─────────────────────────────────
+let hideTimer;
+let ctrlsVisible = false;
+
+function showCtrls(){
+  va.classList.add('ctrls');
+  ctrlsVisible = true;
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hideCtrls, 10000);
+}
+
+function hideCtrls(){
+  va.classList.remove('ctrls');
+  ctrlsVisible = false;
+}
+
+// Mouse: show on any movement
+va.addEventListener('mousemove', showCtrls);
+
+// Touch: the swipe/gesture touchstart above handles coordinate tracking.
+// Controls: reset hide timer whenever any button inside controls or top bar is touched
+document.getElementById('vid-controls').addEventListener('touchstart', ()=>{
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hideCtrls, 10000);
+}, {passive:true});
+
+document.getElementById('room-bar').addEventListener('touchstart', ()=>{
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(hideCtrls, 10000);
+}, {passive:true});
+
+/* ══════════════════════════════════════════════════════════
+   WOULD YOU RATHER
+   ══════════════════════════════════════════════════════════ */
+const WYR_QUESTIONS = [
+  {a:"Always know when your partner is lying",b:"Never have to argue again"},
+  {a:"Travel anywhere together for free once a year",b:"Live 5 minutes apart forever"},
+  {a:"Get a handwritten letter every week",b:"Get a surprise video call every day"},
+  {a:"Cook every meal together",b:"Never have to cook again"},
+  {a:"Relive your first date",b:"Skip straight to your wedding day"},
+  {a:"Always say the wrong thing at the right time",b:"Always say the right thing too late"},
+  {a:"Have a home movie theatre",b:"Have a home cooked meal delivered daily"},
+  {a:"Fight over silly things but always laugh after",b:"Never fight but sometimes feel distant"},
+  {a:"Know all of your partner's secrets",b:"Keep some mystery forever"},
+  {a:"Slow dance in the kitchen",b:"Watch the sunset on a rooftop"},
+  {a:"Text all day every day",b:"One deep phone call a week"},
+  {a:"Get matching tattoos",b:"Write matching songs"},
+  {a:"Move to be together right now",b:"Wait but be 100% sure it's forever"},
+  {a:"Wake up to their voice",b:"Fall asleep to their voice"},
+  {a:"Have unlimited money but long distance forever",b:"Be broke but together every day"}
+];
+let wyrIdx=0;
+function initWYR(){
+  wyrIdx=0;
+  roomRef.child('wyr').on('value', s=>{
+    const d=s.val()||{};
+    wyrIdx = d.idx||0;
+    wyrRender(d);
+  });
+}
+function wyrRender(d){
+  const q=WYR_QUESTIONS[wyrIdx];
+  document.getElementById('wyr-progress').textContent=`Question ${wyrIdx+1} of ${WYR_QUESTIONS.length}`;
+  const picks=d.picks||{};
+  const myPick = role==='host' ? picks.host : picks.guest;
+  const partnerPick = role==='host' ? picks.guest : picks.host;
+  const optA=document.getElementById('wyr-optA'), optB=document.getElementById('wyr-optB');
+  optA.innerHTML = q.a + (partnerPick==='A' ? '<span class="tag">💛 partner</span>' : '');
+  optB.innerHTML = q.b + (partnerPick==='B' ? '<span class="tag">💛 partner</span>' : '');
+  optA.className = 'wyr-opt' + (myPick==='A'?' mine':'') + (partnerPick==='A'?' partners':'');
+  optB.className = 'wyr-opt' + (myPick==='B'?' mine':'') + (partnerPick==='B'?' partners':'');
+  const status=document.getElementById('wyr-status');
+  if(myPick && partnerPick){
+    status.textContent = myPick===partnerPick ? "You both picked the same! 💛" : "You picked differently — talk about it 👀";
+  } else if(myPick){
+    status.textContent = "Waiting for partner to pick…";
+  } else {
+    status.textContent = "";
+  }
+}
+function wyrPick(choice){
+  const key = role==='host' ? 'picks/host' : 'picks/guest';
+  roomRef.child('wyr').child(key).set(choice);
+}
+function wyrGoTo(newIdx){
+  if(newIdx<0 || newIdx>=WYR_QUESTIONS.length) return;
+  roomRef.child('wyr').set({idx:newIdx, picks:{host:null,guest:null}});
+}
+function wyrNext(){ wyrGoTo(wyrIdx+1); }
+function wyrPrev(){ wyrGoTo(wyrIdx-1); }
+
+/* ══════════════════════════════════════════════════════════
+   NEVER HAVE I EVER
+   ══════════════════════════════════════════════════════════ */
+const NHIE_STATEMENTS = [
+  "...cried during a movie and pretended I didn't",
+  "...stalked my partner's old photos at 2am",
+  "...fallen asleep during a phone call with them",
+  "...planned an entire future conversation in my head before saying it",
+  "...saved a screenshot of a sweet text to look at later",
+  "...gotten jealous over nothing and felt silly after",
+  "...practiced what to say before a big conversation",
+  "...cancelled plans just to talk to my partner longer",
+  "...cried happy tears because of something they said",
+  "...stayed up way too late just texting",
+  "...looked at old photos of us and smiled like an idiot",
+  "...gotten butterflies even after being together a long time",
+  "...written something and deleted it before sending",
+  "...missed my partner so much it physically hurt",
+  "...daydreamed about our future during a boring moment",
+  "...felt proud showing off my partner to others",
+  "...forgiven something I said I never would",
+  "...counted down days until I'd see them again",
+  "...replayed a memory of us just to feel close to them",
+  "...known within days that this person was different"
+];
+let nhieIdx=0;
+function initNHIE(){
+  nhieIdx=0;
+  roomRef.child('nhie').on('value', s=>{
+    const d=s.val()||{};
+    nhieIdx=d.idx||0;
+    nhieRender(d);
+  });
+}
+function nhieRender(d){
+  document.getElementById('nhie-progress').textContent=`Statement ${nhieIdx+1} of ${NHIE_STATEMENTS.length}`;
+  document.getElementById('nhie-text').textContent='Never have I ever '+NHIE_STATEMENTS[nhieIdx];
+  const picks=d.picks||{};
+  const myPick = role==='host' ? picks.host : picks.guest;
+  const partnerPick = role==='host' ? picks.guest : picks.host;
+  document.getElementById('nhie-have').classList.toggle('on', myPick===true);
+  document.getElementById('nhie-havent').classList.toggle('on', myPick===false);
+  const status=document.getElementById('nhie-status');
+  if(myPick!==null && myPick!==undefined && partnerPick!==null && partnerPick!==undefined){
+    status.textContent = (myPick===partnerPick) ? "You're the same on this one 💛" : "Different — spill the story 👀";
+  } else if(myPick!==null && myPick!==undefined){
+    status.textContent = "Waiting for partner…";
+  } else { status.textContent=''; }
+}
+function nhiePick(have){
+  const key = role==='host' ? 'picks/host' : 'picks/guest';
+  roomRef.child('nhie').child(key).set(have);
+}
+function nhieGoTo(newIdx){
+  if(newIdx<0 || newIdx>=NHIE_STATEMENTS.length) return;
+  roomRef.child('nhie').set({idx:newIdx, picks:{host:null,guest:null}});
+}
+function nhieNext(){ nhieGoTo(nhieIdx+1); }
+function nhiePrev(){ nhieGoTo(nhieIdx-1); }
+
+/* ══════════════════════════════════════════════════════════
+   36 QUESTIONS (original set inspired by the classic closeness study —
+   not a verbatim reproduction of any published question list)
+   ══════════════════════════════════════════════════════════ */
+const Q36_QUESTIONS = [
+  "Given the choice of anyone, who would you want as a dinner guest?",
+  "Would you like to be famous? In what way?",
+  "Before making a phone call, do you rehearse what you're going to say? Why?",
+  "What would constitute a 'perfect' day for you?",
+  "When did you last sing to yourself? To someone else?",
+  "If you could live to 90 and keep either the mind or body of a 30-year-old, which would you choose?",
+  "Do you have a secret hunch about how you'll die?",
+  "Name three things you and your partner appear to have in common.",
+  "For what in your life do you feel most grateful?",
+  "If you could change anything about how you were raised, what would it be?",
+  "Take 4 minutes to tell your partner your life story in as much detail as possible.",
+  "If you could wake up tomorrow having gained one quality or ability, what would it be?",
+  "If a crystal ball could tell you one truth about yourself, your life, or the future, what would you want to know?",
+  "Is there something you've dreamed of doing for a long time? Why haven't you done it?",
+  "What is the greatest accomplishment of your life?",
+  "What do you value most in a friendship?",
+  "What is your most treasured memory?",
+  "What is your most terrible memory?",
+  "If you knew that in one year you'd die suddenly, would you change anything about how you're living now?",
+  "What does friendship mean to you?",
+  "What roles do love and affection play in your life?",
+  "Share something you consider a positive characteristic of your partner. (5 things)",
+  "How close and warm is your family? Do you feel your childhood was happier than most?",
+  "How do you feel about your relationship with your mother?",
+  "Make 3 true 'we' statements. For instance 'We are both in this room feeling...'",
+  "Complete: 'I wish I had someone with whom I could share...'",
+  "If you were going to become a close friend with your partner, share what would be important for them to know.",
+  "Tell your partner what you like about them; be honest, saying things you wouldn't say to someone you just met.",
+  "Share an embarrassing moment in your life.",
+  "When did you last cry in front of another person? By yourself?",
+  "Tell your partner something you like about them already.",
+  "What, if anything, is too serious to be joked about?",
+  "If you were to die tonight with no chance to communicate, what would you most regret not telling someone?",
+  "Your house, containing everything you own, catches fire. What's the one item you'd save?",
+  "Of all the people in your family, whose death would you find most disturbing? Why?",
+  "Share a personal problem and ask your partner's advice on how they might handle it."
+];
+let q36Idx=0;
+function initQ36(){
+  q36Idx=0;
+  roomRef.child('q36').on('value', s=>{
+    const d=s.val()||{};
+    q36Idx=d.idx||0;
+    q36Render(d);
+  });
+}
+function q36Render(d){
+  document.getElementById('q36-progress').textContent=`Question ${q36Idx+1} of ${Q36_QUESTIONS.length}`;
+  const setNum = Math.floor(q36Idx/12)+1;
+  document.getElementById('q36-set').textContent='Set '+setNum;
+  document.getElementById('q36-text').textContent=Q36_QUESTIONS[q36Idx];
+  const done=d.done||{};
+  document.getElementById('q36-host-check').textContent='Host: '+(done.host?'ready ✓':'not yet');
+  document.getElementById('q36-host-check').className = done.host ? 'done' : '';
+  document.getElementById('q36-guest-check').textContent='Guest: '+(done.guest?'ready ✓':'not yet');
+  document.getElementById('q36-guest-check').className = done.guest ? 'done' : '';
+  const myDone = role==='host' ? done.host : done.guest;
+  document.getElementById('q36-ready-btn').textContent = myDone ? "Ready ✓" : "I'm ready ✓";
+}
+function q36MarkDone(){
+  const key = role==='host' ? 'done/host' : 'done/guest';
+  roomRef.child('q36').child(key).set(true);
+}
+function q36GoTo(newIdx){
+  if(newIdx<0 || newIdx>=Q36_QUESTIONS.length) return;
+  roomRef.child('q36').set({idx:newIdx, done:{host:false,guest:false}});
+}
+function q36Next(){ q36GoTo(q36Idx+1); }
+function q36Prev(){ q36GoTo(q36Idx-1); }
+
+/* ══════════════════════════════════════════════════════════
+   HOW WELL DO YOU KNOW ME
+   ══════════════════════════════════════════════════════════ */
+const HWKM_DEFAULT_BANK = [
+  {text:"What's my go-to comfort food?", subject:'host'},
+  {text:"What's my go-to comfort food?", subject:'guest'},
+  {text:"What's the one thing that instantly makes me smile?", subject:'host'},
+  {text:"What's the one thing that instantly makes me smile?", subject:'guest'},
+  {text:"What's a small habit of mine you've noticed?", subject:'host'},
+  {text:"What's a small habit of mine you've noticed?", subject:'guest'},
+  {text:"What's my biggest dream right now?", subject:'host'},
+  {text:"What's my biggest dream right now?", subject:'guest'},
+  {text:"What's something that stresses me out easily?", subject:'host'},
+  {text:"What's something that stresses me out easily?", subject:'guest'},
+  {text:"What's my favorite way to relax?", subject:'host'},
+  {text:"What's my favorite way to relax?", subject:'guest'}
+];
+let hwkmState={mode:null, phase:'select', questions:[], idx:0};
+function initHWKM(){
+  roomRef.child('hwkm').on('value', s=>{
+    const d=s.val();
+    if(!d){ hwkmRenderModeSelect(); return; }
+    hwkmState=d;
+    if(d.phase==='select') hwkmRenderModeSelect();
+    else if(d.phase==='write') hwkmRenderWrite(d);
+    else if(d.phase==='play') hwkmRenderPlay(d);
+  });
+}
+function hwkmRenderModeSelect(){
+  document.getElementById('hwkm-body').innerHTML = `
+    <p style="font-family:'Playfair Display',serif;font-size:1.2rem;text-align:center">Choose how to play</p>
+    <div class="hwkm-mode-picker">
+      <button class="hwkm-mode-btn" onclick="hwkmChooseMode('default')">📋 Default Questions</button>
+      <button class="hwkm-mode-btn" onclick="hwkmChooseMode('handwritten')">✍️ Write My Own</button>
+    </div>`;
+}
+function hwkmChooseMode(mode){
+  if(mode==='default'){
+    roomRef.child('hwkm').set({mode:'default', phase:'play', idx:0, questions:HWKM_DEFAULT_BANK, responses:{}});
+  } else {
+    roomRef.child('hwkm').set({mode:'handwritten', phase:'write', idx:0, questions:[], responses:{},
+      writeReady:{host:false,guest:false}, drafts:{host:[],guest:[]}});
+  }
+}
+function hwkmRenderWrite(d){
+  const myKey = role==='host' ? 'host' : 'guest';
+  const myReady = (d.writeReady||{})[myKey];
+  const partnerReady = (d.writeReady||{})[role==='host'?'guest':'host'];
+  if(myReady){
+    document.getElementById('hwkm-body').innerHTML = `
+      <p style="font-family:'Playfair Display',serif;font-size:1.15rem;text-align:center">Your questions are saved 💛</p>
+      <p class="game-status">${partnerReady ? "Partner's ready too — starting…" : "Waiting for partner to finish writing…"}</p>`;
+    return;
+  }
+  let rowsHtml='';
+  for(let i=0;i<5;i++){
+    rowsHtml += `
+      <input type="text" id="hwkm-q-${i}" placeholder="Question ${i+1} about yourself (e.g. What's my dream job?)">
+      <input type="text" id="hwkm-a-${i}" placeholder="Your real answer">`;
+  }
+  document.getElementById('hwkm-body').innerHTML = `
+    <p style="font-family:'Playfair Display',serif;font-size:1.15rem;text-align:center">Write 5 questions about yourself<br><span style="font-size:0.75rem;color:var(--muted);font-family:'DM Sans',sans-serif">Your partner will try to guess your real answers</span></p>
+    <div class="hwkm-write-area">${rowsHtml}</div>
+    <button class="game-nav-btn" onclick="hwkmSaveWrite()">Save My Questions ✓</button>`;
+}
+function hwkmSaveWrite(){
+  const drafts=[];
+  for(let i=0;i<5;i++){
+    const q=document.getElementById('hwkm-q-'+i).value.trim();
+    const a=document.getElementById('hwkm-a-'+i).value.trim();
+    if(q && a) drafts.push({text:q, subject:role, subjectAnswer:a});
+  }
+  if(drafts.length<3){ toast('Write at least 3 questions with answers'); return; }
+  const key = role==='host' ? 'host' : 'guest';
+  roomRef.child('hwkm/drafts/'+key).set(drafts);
+  roomRef.child('hwkm/writeReady/'+key).set(true).then(()=>{
+    roomRef.child('hwkm').once('value', s=>{
+      const d=s.val();
+      const wr=d.writeReady||{};
+      if(wr.host && wr.guest){
+        // Both done — merge drafts into final question list, interleaved
+        const hostQ=(d.drafts&&d.drafts.host)||[];
+        const guestQ=(d.drafts&&d.drafts.guest)||[];
+        const merged=[];
+        const max=Math.max(hostQ.length,guestQ.length);
+        for(let i=0;i<max;i++){
+          if(hostQ[i]) merged.push(hostQ[i]);
+          if(guestQ[i]) merged.push(guestQ[i]);
+        }
+        // Only host writes the final merge to avoid double-write race
+        if(role==='host'){
+          roomRef.child('hwkm').update({phase:'play', questions:merged, idx:0, responses:{}});
+        }
+      }
+    });
+  });
+}
+function hwkmRenderPlay(d){
+  const q=d.questions[d.idx];
+  if(!q){
+    document.getElementById('hwkm-body').innerHTML = `<p style="font-family:'Playfair Display',serif;font-size:1.3rem;text-align:center">That's a wrap! 💛<br><span style="font-size:0.8rem;color:var(--muted);font-family:'DM Sans',sans-serif">You both know each other pretty well</span></p>`;
+    return;
+  }
+  const isSubject = q.subject===role;
+  const resp=(d.responses&&d.responses[d.idx])||{};
+  const haveSubjectAnswer = q.subjectAnswer!=null || resp.subjectAnswer!=null;
+  const realAnswer = q.subjectAnswer!=null ? q.subjectAnswer : resp.subjectAnswer;
+  const myGuess = isSubject ? null : resp.guess;
+  const bothIn = haveSubjectAnswer && resp.guess;
+
+  let inner=`<div class="game-progress">Question ${d.idx+1} of ${d.questions.length}</div>
+    <div class="game-card"><div class="game-q">${q.text}</div>`;
+
+  if(bothIn){
+    const match = realAnswer && resp.guess && realAnswer.trim().toLowerCase()===resp.guess.trim().toLowerCase();
+    inner += `<div class="hwkm-reveal">
+      <div>Real answer: <b>${realAnswer}</b></div>
+      <div>Guess: <b>${resp.guess}</b></div>
+      <div class="${match?'correct':'wrong'}" style="margin-top:0.4rem">${match ? '✓ Nailed it!' : '✗ Not quite — still worth a laugh'}</div>
+    </div>`;
+  } else if(isSubject && !haveSubjectAnswer){
+    inner += `<input class="hwkm-answer-input" id="hwkm-live-answer" placeholder="Type your real answer" onkeydown="if(event.key==='Enter')hwkmSubmitSubjectAnswer()">
+      <button class="game-nav-btn" style="margin-top:0.7rem" onclick="hwkmSubmitSubjectAnswer()">Submit</button>`;
+  } else if(!isSubject && !resp.guess){
+    inner += `<input class="hwkm-answer-input" id="hwkm-live-guess" placeholder="Type your guess" onkeydown="if(event.key==='Enter')hwkmSubmitGuess()">
+      <button class="game-nav-btn" style="margin-top:0.7rem" onclick="hwkmSubmitGuess()">Submit Guess</button>`;
+  } else {
+    inner += `<p class="game-status">Waiting for partner to submit…</p>`;
+  }
+  inner += `</div>
+    <div class="game-nav">
+      <button class="game-nav-btn ghost" onclick="hwkmPrev()">← Prev</button>
+      <button class="game-nav-btn" onclick="hwkmNext()">Next →</button>
+    </div>`;
+  document.getElementById('hwkm-body').innerHTML=inner;
+}
+function hwkmSubmitSubjectAnswer(){
+  const val=document.getElementById('hwkm-live-answer').value.trim();
+  if(!val) return;
+  roomRef.child('hwkm/responses/'+hwkmState.idx+'/subjectAnswer').set(val);
+}
+function hwkmSubmitGuess(){
+  const val=document.getElementById('hwkm-live-guess').value.trim();
+  if(!val) return;
+  roomRef.child('hwkm/responses/'+hwkmState.idx+'/guess').set(val);
+}
+function hwkmNext(){
+  const max=(hwkmState.questions||[]).length;
+  if(hwkmState.idx+1>max) return;
+  roomRef.child('hwkm/idx').set(hwkmState.idx+1);
+}
+function hwkmPrev(){
+  if(hwkmState.idx<=0) return;
+  roomRef.child('hwkm/idx').set(hwkmState.idx-1);
+}
+
+/* ══════════════════════════════════════════════════════════
+   DRAW EACH OTHER — private draw, simultaneous reveal
+   ══════════════════════════════════════════════════════════ */
+let drawCtx=null, drawColor='#000000', drawing=false, drawSubmitted=false;
+function initDraw(){
+  drawSubmitted=false;
+  const canvas=document.getElementById('draw-canvas');
+  const wrap=canvas.parentElement;
+  const size=wrap.clientWidth;
+  canvas.width=size; canvas.height=size;
+  drawCtx=canvas.getContext('2d');
+  drawCtx.fillStyle='#fff'; drawCtx.fillRect(0,0,size,size);
+  drawCtx.lineWidth=4; drawCtx.lineCap='round'; drawCtx.strokeStyle=drawColor;
+
+  function pos(e){
+    const r=canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return {x:(cx-r.left)*(canvas.width/r.width), y:(cy-r.top)*(canvas.height/r.height)};
+  }
+  function start(e){ if(drawSubmitted) return; e.preventDefault(); drawing=true; const p=pos(e); drawCtx.beginPath(); drawCtx.moveTo(p.x,p.y); }
+  function move(e){ if(!drawing||drawSubmitted) return; e.preventDefault(); const p=pos(e); drawCtx.lineTo(p.x,p.y); drawCtx.stroke(); }
+  function end(){ drawing=false; }
+
+  canvas.onmousedown=start; canvas.onmousemove=move; canvas.onmouseup=end; canvas.onmouseleave=end;
+  canvas.ontouchstart=start; canvas.ontouchmove=move; canvas.ontouchend=end;
+
+  document.getElementById('draw-submit-btn').textContent='Submit Drawing ✓';
+  document.getElementById('draw-submit-btn').disabled=false;
+  document.getElementById('draw-status').textContent='';
+
+  roomRef.child('draw').on('value', s=>{
+    const d=s.val()||{};
+    const myDone = role==='host' ? d.hostDone : d.guestDone;
+    const partnerDone = role==='host' ? d.guestDone : d.hostDone;
+    if(myDone) drawSubmitted=true;
+    if(d.hostDone && d.guestDone){
+      drawRenderReveal(d);
+    } else if(myDone){
+      document.getElementById('draw-status').textContent = partnerDone ? '' : "Waiting for partner to finish drawing…";
+    }
+  });
+}
+function drawSetColor(c,el){
+  drawColor=c; if(drawCtx) drawCtx.strokeStyle=c;
+  document.querySelectorAll('.draw-color').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+}
+function drawClear(){
+  if(drawSubmitted) return;
+  const canvas=document.getElementById('draw-canvas');
+  drawCtx.fillStyle='#fff'; drawCtx.fillRect(0,0,canvas.width,canvas.height);
+}
+function drawSubmit(){
+  if(drawSubmitted) return;
+  const canvas=document.getElementById('draw-canvas');
+  const dataUrl=canvas.toDataURL('image/jpeg',0.7);
+  const key = role==='host' ? {'data':'hostData','done':'hostDone'} : {'data':'guestData','done':'guestDone'};
+  roomRef.child('draw').update({[key.data]:dataUrl, [key.done]:true});
+  drawSubmitted=true;
+  document.getElementById('draw-submit-btn').textContent='Submitted ✓ waiting for partner…';
+  document.getElementById('draw-submit-btn').disabled=true;
+}
+function drawRenderReveal(d){
+  document.getElementById('draw-body').innerHTML = `
+    <p style="font-family:'Playfair Display',serif;font-size:1.2rem;text-align:center">The reveal 🎨</p>
+    <div class="draw-reveal-wrap">
+      <div class="draw-reveal-item"><img src="${d.hostData}"><span>Host's drawing</span></div>
+      <div class="draw-reveal-item"><img src="${d.guestData}"><span>Guest's drawing</span></div>
+    </div>
+    <button class="game-nav-btn" onclick="drawReset()">Draw Again 🔄</button>`;
+}
+function drawReset(){
+  roomRef.child('draw').set({hostDone:false,guestDone:false,hostData:null,guestData:null});
+  initDraw();
+}
+
+/* ══════════════════════════════════════════════════════════
+   PHOTO BOOTH — synced countdown, both snap at once
+   ══════════════════════════════════════════════════════════ */
+let pbStream=null, pbReady=false, pbCaptured=false, pbCountdownTimer=null;
+let pbPc=null, pbConnectTimeout=null, pbFbListeners={};
+function _detachPBListeners(){
+  Object.values(pbFbListeners).forEach(({ref,event,handler})=>{ try{ ref.off(event,handler); }catch(_){} });
+  pbFbListeners={};
+}
+async function initPhotoBooth(){
+  _detachPBListeners();
+  pbReady=false; pbCaptured=false;
+  document.getElementById('pb-ready-btn').textContent="I'm Ready 📸";
+  document.getElementById('pb-ready-btn').disabled=false;
+  document.getElementById('pb-status').textContent="Tap ready when you're set — photo snaps when you're both ready";
+  document.getElementById('pb-result-area').innerHTML='';
+  document.getElementById('pb-countdown').classList.remove('show');
+  document.getElementById('pb-partner-waiting').classList.remove('hide');
+
+  try{
+    pbStream = await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:'user',
+        width:{ideal:1280, max:1920},
+        height:{ideal:720, max:1080}
+        // Kept reasonably high here on purpose — this exact stream is what pbSnap()
+        // captures the final saved photo from, so local quality matters. The
+        // live feed SENT to your partner is downscaled separately below, in
+        // pbSetupPC() — that doesn't touch this local capture at all.
+      },
+      audio:false
+    });
+    document.getElementById('pb-self-vid').srcObject=pbStream;
+  }catch(e){
+    document.getElementById('pb-status').textContent='Camera access denied — allow camera to use Photo Booth';
+    return;
+  }
+
+  const pbMainRef=roomRef.child('photobooth');
+  const pbMainHandler=s=>{
+    const d=s.val()||{};
+    const partnerReady = role==='host' ? d.readyGuest : d.readyHost;
+    if(d.readyHost && d.readyGuest && d.countdownStart && !pbCaptured){
+      pbRunCountdown(d.countdownStart);
+    } else if(pbReady && !partnerReady){
+      document.getElementById('pb-status').textContent='Waiting for partner to be ready…';
+    }
+    if(d.hostPhoto && d.guestPhoto){
+      pbShowResult(d);
+    }
+  };
+  pbMainRef.on('value', pbMainHandler);
+  pbFbListeners['pbMain']={ref:pbMainRef, event:'value', handler:pbMainHandler};
+
+  // Start the live partner-view connection — host always offers, guest always answers.
+  // Clear any stale signaling data from a previous visit before starting fresh.
+  await Promise.all([
+    roomRef.child('photobooth/rtc/candsHost').remove().catch(()=>{}),
+    roomRef.child('photobooth/rtc/candsGuest').remove().catch(()=>{}),
+  ]);
+  if(role==='host'){
+    roomRef.child('photobooth/rtc').update({offer:null, answer:null}).then(()=>pbStartHost());
+  } else {
+    pbStartGuest();
+  }
+}
+
+/* Downscales + caps ONLY the stream sent to your partner for the live pose
+   preview. It never touches pbStream itself (the local capture), so the
+   photo pbSnap() actually saves stays full quality — this only lightens
+   what travels over the network, since the preview only displays in a
+   ~150-200px tile and doesn't need to be full resolution. */
+function applyPBBitrateLimit(){
+  if(!pbPc) return;
+  pbPc.getSenders().forEach(s=>{
+    if(!s.track || s.track.kind!=='video') return;
+    const p=s.getParameters();
+    if(!p.encodings||!p.encodings.length) return;
+    p.encodings.forEach(enc=>{
+      enc.scaleResolutionDownBy=2.5;                   // ~1280×720 local capture → ~512×288 sent over the wire
+      enc.maxBitrate=250*1000;                          // 250 kbps ceiling — plenty for a small preview tile
+      enc.degradationPreference='maintain-framerate';   // smooth posing preview over sharpness
+    });
+    s.setParameters(p).catch(()=>{});
+  });
+}
+
+function pbSetupPC(){
+  if(pbPc){ pbPc.close(); pbPc=null; }
+  pbPc=new RTCPeerConnection(ICE);
+  pbStream.getTracks().forEach(t=>pbPc.addTrack(t,pbStream));
+
+  pbPc.ontrack=e=>{
+    if(e.streams && e.streams[0]){
+      clearTimeout(pbConnectTimeout);
+      const pv=document.getElementById('pb-partner-vid');
+      pv.srcObject=e.streams[0];
+      pv.play().catch(()=>{});
+      document.getElementById('pb-partner-waiting').classList.add('hide');
+    }
+  };
+  pbPc.oniceconnectionstatechange=()=>{
+    const s=pbPc.iceConnectionState;
+    if(s==='connected'||s==='completed'){ clearTimeout(pbConnectTimeout); applyPBBitrateLimit(); }
+  };
+
+  clearTimeout(pbConnectTimeout);
+  pbConnectTimeout=setTimeout(()=>{
+    if(pbPc && pbPc.connectionState!=='connected'){
+      document.getElementById('pb-partner-waiting').textContent="Couldn't load partner's camera — check your internet";
+    }
+  }, 18000);
+}
+
+async function pbStartHost(){
+  pbSetupPC();
+  pbPc.onicecandidate=e=>{ if(e.candidate) roomRef.child('photobooth/rtc/candsHost').push(e.candidate.toJSON()); };
+
+  const guestCandsRef=roomRef.child('photobooth/rtc/candsGuest');
+  const guestCandsHandler=async s=>{
+    const c=s.val();
+    if(c && pbPc) try{ await pbPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
+  };
+  guestCandsRef.on('child_added', guestCandsHandler);
+  pbFbListeners['candsGuest']={ref:guestCandsRef, event:'child_added', handler:guestCandsHandler};
+
+  const offer=await pbPc.createOffer();
+  await pbPc.setLocalDescription(offer);
+  await roomRef.child('photobooth/rtc/offer').set({sdp:offer.sdp, type:offer.type});
+
+  const answerRef=roomRef.child('photobooth/rtc/answer');
+  const answerHandler=async s=>{
+    const a=s.val();
+    if(a && pbPc && !pbPc.currentRemoteDescription){
+      try{ await pbPc.setRemoteDescription(new RTCSessionDescription(a)); }catch(_){}
+    }
+  };
+  answerRef.on('value', answerHandler);
+  pbFbListeners['answer']={ref:answerRef, event:'value', handler:answerHandler};
+}
+
+async function pbStartGuest(){
+  pbSetupPC();
+  pbPc.onicecandidate=e=>{ if(e.candidate) roomRef.child('photobooth/rtc/candsGuest').push(e.candidate.toJSON()); };
+
+  const hostCandsRef=roomRef.child('photobooth/rtc/candsHost');
+  const hostCandsHandler=async s=>{
+    const c=s.val();
+    if(c && pbPc) try{ await pbPc.addIceCandidate(new RTCIceCandidate(c)); }catch(_){}
+  };
+  hostCandsRef.on('child_added', hostCandsHandler);
+  pbFbListeners['candsHost']={ref:hostCandsRef, event:'child_added', handler:hostCandsHandler};
+
+  const offerRef=roomRef.child('photobooth/rtc/offer');
+  const offerHandler=async s=>{
+    const o=s.val();
+    if(o && pbPc && !pbPc.currentRemoteDescription){
+      try{
+        await pbPc.setRemoteDescription(new RTCSessionDescription(o));
+        const answer=await pbPc.createAnswer();
+        await pbPc.setLocalDescription(answer);
+        await roomRef.child('photobooth/rtc/answer').set({sdp:answer.sdp, type:answer.type});
+      }catch(_){}
+    }
+  };
+  offerRef.on('value', offerHandler);
+  pbFbListeners['offer']={ref:offerRef, event:'value', handler:offerHandler};
+}
+
+function pbToggleReady(){
+  pbReady=!pbReady;
+  const key = role==='host' ? 'readyHost' : 'readyGuest';
+  roomRef.child('photobooth').child(key).set(pbReady);
+  document.getElementById('pb-ready-btn').textContent = pbReady ? "Cancel Ready" : "I'm Ready 📸";
+  if(pbReady){
+    roomRef.child('photobooth').once('value', s=>{
+      const d=s.val()||{};
+      // Only host schedules countdown, and only if not already scheduled
+      if(d.readyHost && d.readyGuest && !d.countdownStart && role==='host'){
+        roomRef.child('photobooth/countdownStart').set(Date.now()+3300);
+      }
+    });
+  } else {
+    if(role==='host') roomRef.child('photobooth/countdownStart').set(null);
+  }
+}
+function pbRunCountdown(startTs){
+  clearInterval(pbCountdownTimer);
+  const el=document.getElementById('pb-countdown');
+  el.classList.add('show');
+  pbCountdownTimer=setInterval(()=>{
+    const remain=Math.ceil((startTs-Date.now())/1000);
+    if(remain>0){ el.textContent=remain; }
+    else{
+      clearInterval(pbCountdownTimer);
+      el.classList.remove('show');
+      pbSnap();
+    }
+  },100);
+}
+function pbSnap(){
+  if(pbCaptured) return;
+  pbCaptured=true;
+  const vid=document.getElementById('pb-self-vid');
+  const canvas=document.createElement('canvas');
+  canvas.width=480; canvas.height=640;
+  const ctx=canvas.getContext('2d');
+  // NOTE: deliberately NOT mirrored. The live preview (#pb-self-vid) is mirrored
+  // in CSS only, purely so posing feels natural to you — but your partner's
+  // camera feed sent over WebRTC is never mirrored, so whatever you saw of THEM
+  // and leaned/reached toward while posing was their true orientation. Saving
+  // your own photo mirrored (to match your own preview) breaks that consistency:
+  // both of you would end up "facing" the same direction instead of toward
+  // each other once the two photos are placed side by side. Capturing raw here
+  // keeps the saved photo geometrically consistent with what you both saw live.
+  ctx.drawImage(vid,0,0,canvas.width,canvas.height);
+  const dataUrl=canvas.toDataURL('image/jpeg',0.75);
+  const flash=document.getElementById('pb-flash');
+  flash.classList.add('flash');
+  setTimeout(()=>flash.classList.remove('flash'),400);
+  const key = role==='host' ? 'hostPhoto' : 'guestPhoto';
+  roomRef.child('photobooth').child(key).set(dataUrl);
+  document.getElementById('pb-status').textContent="Captured! Waiting for partner's photo\u2026";
+}
+function pbShowResult(d){
+  document.getElementById('pb-result-area').innerHTML = `
+    <div class="pb-strip">
+      <img src="${d.hostPhoto}" style="width:127px;height:169px;object-fit:cover;border-radius:8px">
+      <img src="${d.guestPhoto}" style="width:127px;height:169px;object-fit:cover;border-radius:8px">
+    </div>
+    <button class="game-nav-btn" style="margin-top:0.8rem" onclick="pbDownload('${d.hostPhoto}','${d.guestPhoto}')">Save Photo ⬇</button>
+    <button class="game-nav-btn ghost" style="margin-top:0.5rem" onclick="pbRetake()">Retake 🔄</button>`;
+  document.getElementById('pb-status').textContent='';
+}
+function pbDownload(hostUrl,guestUrl){
+  const img1=new Image(), img2=new Image();
+  let loaded=0;
+  function draw(){
+    loaded++;
+    if(loaded<2) return;
+    // Source photos are captured at 480×640 (3:4 ratio) — the composite boxes
+    // below match that exactly (255×340, since 255/340 = 0.75 = 480/640) so
+    // nothing gets squeezed or skewed. The old 250×340 box was a slightly
+    // different ratio and subtly warped straight lines like walls/door frames.
+    const boxW=255, boxH=340, gap=10, margin=10;
+    const canvas=document.createElement('canvas');
+    canvas.width=boxW*2+gap+margin*2; canvas.height=boxH+margin*2;
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(img1,margin,margin,boxW,boxH);
+    ctx.drawImage(img2,margin+boxW+gap,margin,boxW,boxH);
+    const a=document.createElement('a');
+    a.download='justus-photobooth.jpg';
+    a.href=canvas.toDataURL('image/jpeg',0.85);
+    a.click();
+  }
+  img1.onload=draw; img2.onload=draw;
+  img1.src=hostUrl; img2.src=guestUrl;
+}
+function pbRetake(){
+  roomRef.child('photobooth').set({readyHost:false,readyGuest:false,countdownStart:null,hostPhoto:null,guestPhoto:null});
+  initPhotoBooth();
+}
+
+/* ══════════════════════════════════════════════════════════
+   LOVE NOTES
+   ══════════════════════════════════════════════════════════ */
+function initNotes(){
+  roomRef.child('notesList').off();
+  roomRef.child('notesList').on('value', s=>{
+    const notes=s.val();
+    const list=document.getElementById('notes-list');
+    if(!notes){ list.innerHTML='<div class="notes-empty">No notes yet — leave the first one 💌</div>'; return; }
+    const arr=Object.values(notes).sort((a,b)=>a.ts-b.ts);
+    list.innerHTML = arr.map(n=>`
+      <div class="note-card">
+        <div class="note-from">${n.sender}</div>
+        <div class="note-text">${(n.text||'').replace(/</g,'&lt;')}</div>
+        <div class="note-time">${new Date(n.ts).toLocaleString([],{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+      </div>`).join('');
+    list.scrollTop=list.scrollHeight;
+  });
+}
+function sendNote(){
+  const inp=document.getElementById('notes-input');
+  const txt=inp.value.trim();
+  if(!txt) return;
+  roomRef.child('notesList').push({sender:myName, text:txt, ts:Date.now()});
+  inp.value='';
+}
+
+</script>
+</body>
+</html>
